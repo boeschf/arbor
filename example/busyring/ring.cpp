@@ -184,7 +184,7 @@ int main(int argc, char** argv) {
 
 #ifdef ARB_MPI_ENABLED
         arbenv::with_mpi guard(argc, argv, false);
-        resources.gpu_id = arbenv::find_private_gpu(MPI_COMM_WORLD);
+        //resources.gpu_id = arbenv::find_private_gpu(MPI_COMM_WORLD);
         auto context = arb::make_context(resources, MPI_COMM_WORLD);
         root = arb::rank(context) == 0;
 #else
