@@ -123,7 +123,7 @@ set(unit_sources
     test_schedule.cpp
     test_scope_exit.cpp
     test_segment_tree.cpp
-    test_simd.cpp
+    #test_simd.cpp
     test_simulation.cpp
     test_span.cpp
     test_spike_source.cpp
