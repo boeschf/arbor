@@ -10,7 +10,6 @@
 #include "memory/memory.hpp"
 #include "backends/event.hpp"
 #include "backends/gpu/multi_event_stream.hpp"
-#include "backends/gpu/multi_event_stream.hpp"
 
 namespace arb {
 namespace gpu {

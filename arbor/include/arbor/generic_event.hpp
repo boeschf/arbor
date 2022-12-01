@@ -25,7 +25,7 @@
 //    is used with `multi_event_stream`.
 //    Default implementation returns `e.data` for an event `e`.
 //
-// The type aliases event_time_type<Event> and event_index_type<Event>
+// The type aliases event_time_type<Event>, event_index_type<Event> and event_data_type<Event>
 // give the corresponding return types.
 //
 // The accessors act as customization points, in that they can be

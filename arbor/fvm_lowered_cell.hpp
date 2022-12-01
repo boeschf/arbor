@@ -195,9 +195,6 @@ struct probe_association_map {
 };
 
 struct fvm_initialization_data {
-    // Map from gid to integration domain id
-    std::vector<arb_index_type> cell_to_intdom;
-
     // Handles for accessing lowered cell.
     std::vector<target_handle> target_handles;
 
@@ -226,8 +223,8 @@ struct fvm_lowered_cell {
     virtual fvm_integration_result integrate(
         arb_value_type tfinal,
         arb_value_type max_dt,
-        std::vector<deliverable_event> staged_events,
-        std::vector<sample_event> staged_samples) = 0;
+        const event_map& staged_event_map,
+        const std::vector<sample_event>& staged_samples) = 0;
 
     virtual arb_value_type time() const = 0;
 

@@ -1,3 +1,4 @@
+#include <numeric>
 #include <utility>
 #include <vector>
 
@@ -199,6 +200,7 @@ void communicator::make_event_queues(const gathered_vector<spike>& global_spikes
             }
         }
     }
+    num_local_events_ = util::sum_by( queues, [](const auto& q) {return q.size();}, num_local_events_);
 }
 
 std::uint64_t communicator::num_spikes() const {
@@ -219,6 +221,7 @@ const std::vector<connection>& communicator::connections() const {
 
 void communicator::reset() {
     num_spikes_ = 0;
+    num_local_events_ = 0;
 }
 
 } // namespace arb

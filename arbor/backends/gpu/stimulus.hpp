@@ -21,8 +21,7 @@ struct istim_pp {
     arb_index_type* envl_index;
 
     // Pointers to shared state data:
-    const arb_value_type* time;
-    const arb_index_type* cv_to_intdom;
+    arb_value_type time;
     arb_value_type* current_density;
 };
 

@@ -99,7 +99,7 @@ public:
     time_type run(time_type tfinal, time_type dt);
 
     sampler_association_handle add_sampler(cell_member_predicate probeset_ids,
-        schedule sched, sampler_function f, sampling_policy policy = sampling_policy::lax);
+        schedule sched, sampler_function f);
 
     void remove_sampler(sampler_association_handle);
 
@@ -110,8 +110,6 @@ public:
     std::size_t num_spikes() const {
         return communicator_.num_spikes();
     }
-
-    void set_binning_policy(binning_kind policy, time_type bin_interval);
 
     void inject_events(const cse_vector& events);
 
@@ -458,13 +456,12 @@ time_type simulation_state::run(time_type tfinal, time_type dt) {
 sampler_association_handle simulation_state::add_sampler(
         cell_member_predicate probeset_ids,
         schedule sched,
-        sampler_function f,
-        sampling_policy policy)
+        sampler_function f)
 {
     sampler_association_handle h = sassoc_handles_.acquire();
 
     foreach_group(
-        [&](cell_group_ptr& group) { group->add_sampler(h, probeset_ids, sched, f, policy); });
+        [&](cell_group_ptr& group) { group->add_sampler(h, probeset_ids, sched, f); });
 
     return h;
 }
@@ -490,11 +487,6 @@ std::vector<probe_metadata> simulation_state::get_probe_metadata(cell_member_typ
     else {
         return {};
     }
-}
-
-void simulation_state::set_binning_policy(binning_kind policy, time_type bin_interval) {
-    foreach_group(
-        [&](cell_group_ptr& group) { group->set_binning_policy(policy, bin_interval); });
 }
 
 void simulation_state::inject_events(const cse_vector& events) {
@@ -542,10 +534,9 @@ time_type simulation::run(time_type tfinal, time_type dt) {
 sampler_association_handle simulation::add_sampler(
     cell_member_predicate probeset_ids,
     schedule sched,
-    sampler_function f,
-    sampling_policy policy)
+    sampler_function f)
 {
-    return impl_->add_sampler(std::move(probeset_ids), std::move(sched), std::move(f), policy);
+    return impl_->add_sampler(std::move(probeset_ids), std::move(sched), std::move(f));
 }
 
 void simulation::remove_sampler(sampler_association_handle h) {
@@ -562,10 +553,6 @@ std::vector<probe_metadata> simulation::get_probe_metadata(cell_member_type prob
 
 std::size_t simulation::num_spikes() const {
     return impl_->num_spikes();
-}
-
-void simulation::set_binning_policy(binning_kind policy, time_type bin_interval) {
-    impl_->set_binning_policy(policy, bin_interval);
 }
 
 void simulation::set_global_spike_callback(spike_export_function export_callback) {

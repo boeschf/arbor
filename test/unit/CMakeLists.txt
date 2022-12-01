@@ -71,7 +71,6 @@ set(unit_sources
     test_cycle.cpp
     test_domain_decomposition.cpp
     test_dry_run_context.cpp
-    test_event_binner.cpp
     test_event_delivery.cpp
     test_event_generators.cpp
     test_event_queue.cpp
@@ -162,10 +161,7 @@ if(ARB_WITH_GPU)
     list(APPEND unit_sources
         test_intrin.cu
         test_gpu_stack.cu
-        test_multi_event_stream_gpu.cu
         test_reduce_by_key.cu
-        test_matrix_cpuvsgpu.cpp
-        test_matrix_gpu.cpp
         test_mc_cell_group_gpu.cpp
         test_multi_event_stream_gpu.cpp
         test_spikes_gpu.cpp

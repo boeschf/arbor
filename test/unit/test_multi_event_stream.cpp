@@ -8,51 +8,44 @@
 using namespace arb;
 
 namespace {
-    // set up four targets across three streams and two mech ids.
+    auto evtime = [](deliverable_event e) { return event_time(e); };
 
-    constexpr cell_local_size_type mech_1 = 10u;
-    constexpr cell_local_size_type mech_2 = 13u;
-    constexpr cell_size_type cell_1 = 20u;
-    constexpr cell_size_type cell_2 = 77u;
-    constexpr cell_size_type cell_3 = 33u;
-    constexpr cell_size_type n_cell = 100u;
+    constexpr cell_local_size_type mech = 13u;
 
     target_handle handle[4] = {
-        target_handle(mech_1, 0u, cell_1),
-        target_handle(mech_2, 1u, cell_2),
-        target_handle(mech_1, 4u, cell_2),
-        target_handle(mech_2, 2u, cell_3)
+        target_handle(mech, 0u),
+        target_handle(mech, 1u),
+        target_handle(mech, 4u),
+        target_handle(mech, 2u)
     };
-
-    // cell_1 (handle 0) has one event at t=3
-    // cell_2 (handle 1 and 2) has two events at t=2 and t=5
-    // cell_3 (handle 3) has one event at t=3
 
     std::vector<deliverable_event> common_events = {
         deliverable_event(3.f, handle[0], 1.f),
-        deliverable_event(3.f, handle[3], 4.f),
         deliverable_event(2.f, handle[1], 2.f),
+        deliverable_event(5.f, handle[1], 6.f),
+        deliverable_event(3.f, handle[3], 4.f),
         deliverable_event(5.f, handle[2], 3.f)
     };
-}
 
-namespace {
-    // convenience wrapper around marked_events:
-    template <typename MultiEventStream>
-    auto marked_range(const MultiEventStream& m, unsigned i) {
-        return util::make_range(m.marked_events().begin_marked(i), m.marked_events().end_marked(i));
+    bool event_matches(const arb_deliverable_event_data& e, unsigned i) {
+        const auto& expected = common_events[i];
+        return (e.weight == expected.weight &&
+            e.mech_index == expected.handle.mech_index);
     }
 }
 
 TEST(multi_event_stream, init) {
     using multi_event_stream = multicore::multi_event_stream<deliverable_event>;
 
-    multi_event_stream m(n_cell);
-    EXPECT_EQ(n_cell, m.n_streams());
+    multi_event_stream m;
 
-    auto events = common_events;
-    ASSERT_TRUE(util::is_sorted_by(events, [](deliverable_event e) { return event_index(e); }));
-    m.init(events);
+    ASSERT_TRUE(std::is_sorted(common_events.begin(), common_events.end(),
+        [](const auto& a, const auto& b) {
+            return a.handle.mech_index < b.handle.mech_index ||
+                (a.handle.mech_index == b.handle.mech_index && event_time(a) < event_time(b));
+        }));
+
+    m.init(common_events);
     EXPECT_FALSE(m.empty());
 
     m.clear();
@@ -62,151 +55,99 @@ TEST(multi_event_stream, init) {
 TEST(multi_event_stream, mark) {
     using multi_event_stream = multicore::multi_event_stream<deliverable_event>;
 
-    multi_event_stream m(n_cell);
-    ASSERT_EQ(n_cell, m.n_streams());
+    multi_event_stream m;
 
-    auto events = common_events;
-    ASSERT_TRUE(util::is_sorted_by(events, [](deliverable_event e) { return event_index(e); }));
+    const auto& events = common_events;
     m.init(events);
 
-    for (cell_size_type i = 0; i<n_cell; ++i) {
-        EXPECT_TRUE(marked_range(m, i).empty());
-    }
+    // stream is not empty
+    EXPECT_FALSE(m.empty());
+    // 4 different mech indices
+    EXPECT_EQ(m.n_streams(), 4u);
+    // 5 events in total
+    EXPECT_EQ(m.n_remaining(), 5u);
+    // 0 marked events so far
+    EXPECT_EQ(m.n_marked(), 0u);
 
-    std::vector<time_type> t_until(n_cell);
-    t_until[cell_1] = 2.f;
-    t_until[cell_2] = 2.5f;
-    t_until[cell_3] = 4.f;
-    m.mark_until_after(t_until);
-
-    // Only two events should be marked: 
-    //     events[0] (with handle 1) at t=2.f on cell_2
-    //     events[2] (with handle 3) at t=3.f on cell_3
-
-    for (cell_size_type i = 0; i<n_cell; ++i) {
-        auto evs = marked_range(m, i);
-        auto n_marked = evs.size();
-        switch (i) {
-        case cell_2:
-            EXPECT_EQ(1u, n_marked);
-            EXPECT_EQ(handle[1].mech_id, evs.front().mech_id);
-            EXPECT_EQ(handle[1].mech_index, evs.front().mech_index);
-            break;
-        case cell_3:
-            EXPECT_EQ(1u, n_marked);
-            EXPECT_EQ(handle[3].mech_id, evs.front().mech_id);
-            EXPECT_EQ(handle[3].mech_index, evs.front().mech_index);
-            break;
-        default:
-            EXPECT_EQ(0u, n_marked);
-            break;
+    // Expect no marked events initially
+    {
+        auto marked = m.marked_events();
+        EXPECT_EQ(marked.n_streams(), 4u);
+        EXPECT_EQ(marked.n_marked(), 0u);
+        for (arb_size_type i=0; i<marked.n_streams(); ++i) {
+            EXPECT_EQ(marked.begin_marked(i), marked.end_marked(i));
         }
     }
 
-    // Drop these events and mark all events up to and including t=5.f.
-    //     cell_1 should have one marked event (events[1], handle 0)
-    //     cell_2 should have one marked event (events[3], handle 2)
+    m.mark_until_after(2.5);
+    EXPECT_FALSE(m.empty());
+    EXPECT_EQ(m.n_remaining(), 5u);
+    EXPECT_EQ(m.n_marked(), 1u);
+    EXPECT_EQ(m.marked_events().n_marked(), 1u);
+    {
+        auto marked = m.marked_events();
+        const auto B = marked.ev_data;
+        EXPECT_EQ(marked.n_marked(), 1u);
+        EXPECT_EQ(marked.end_marked(1) - marked.begin_marked(1), 1u);
+        EXPECT_EQ(marked.begin_marked(1), B + 1);
+        EXPECT_TRUE(event_matches(*(B + 1), 1));
+    }
 
     m.drop_marked_events();
-    t_until.assign(n_cell, 5.f);
-    m.mark_until_after(t_until);
+    EXPECT_FALSE(m.empty());
+    EXPECT_EQ(m.n_remaining(), 4u);
+    EXPECT_EQ(m.n_marked(), 0u);
+    EXPECT_EQ(m.marked_events().n_marked(), 0u);
 
-    for (cell_size_type i = 0; i<n_cell; ++i) {
-        auto evs = marked_range(m, i);
-        auto n_marked = evs.size();
-        switch (i) {
-        case cell_1:
-            EXPECT_EQ(1u, n_marked);
-            EXPECT_EQ(handle[0].mech_id, evs.front().mech_id);
-            EXPECT_EQ(handle[0].mech_index, evs.front().mech_index);
-            break;
-        case cell_2:
-            EXPECT_EQ(1u, n_marked);
-            EXPECT_EQ(handle[2].mech_id, evs.front().mech_id);
-            EXPECT_EQ(handle[2].mech_index, evs.front().mech_index);
-            break;
-        default:
-            EXPECT_EQ(0u, n_marked);
-            break;
-        }
+    m.mark_until_after(2.75);
+    EXPECT_FALSE(m.empty());
+    EXPECT_EQ(m.n_remaining(), 4u);
+    EXPECT_EQ(m.n_marked(), 0u);
+    EXPECT_EQ(m.marked_events().n_marked(), 0u);
+
+    m.mark_until_after(4.0);
+    EXPECT_FALSE(m.empty());
+    EXPECT_EQ(m.n_remaining(), 4u);
+    EXPECT_EQ(m.n_marked(), 2u);
+    EXPECT_EQ(m.marked_events().n_marked(), 2u);
+    {
+        auto marked = m.marked_events();
+        const auto B = marked.ev_data;
+        EXPECT_EQ(marked.n_marked(), 2u);
+        EXPECT_EQ(marked.end_marked(0) - marked.begin_marked(0), 1u);
+        EXPECT_EQ(marked.begin_marked(0), B + 0);
+        EXPECT_TRUE(event_matches(*(B + 0), 0));
+        EXPECT_EQ(marked.end_marked(2) - marked.begin_marked(2), 1u);
+        EXPECT_EQ(marked.begin_marked(2), B + 3);
+        EXPECT_TRUE(event_matches(*(B + 3), 3));
     }
 
-    // No more events after these.
+    m.drop_marked_events();
     EXPECT_FALSE(m.empty());
+    EXPECT_EQ(m.n_remaining(), 2u);
+    EXPECT_EQ(m.n_marked(), 0u);
+    EXPECT_EQ(m.marked_events().n_marked(), 0u);
+
+    m.mark_until_after(5.0);
+    EXPECT_FALSE(m.empty());
+    EXPECT_EQ(m.n_remaining(), 2u);
+    EXPECT_EQ(m.n_marked(), 2u);
+    EXPECT_EQ(m.marked_events().n_marked(), 2u);
+    {
+        auto marked = m.marked_events();
+        const auto B = marked.ev_data;
+        EXPECT_EQ(marked.n_marked(), 2u);
+        EXPECT_EQ(marked.end_marked(1) - marked.begin_marked(1), 1u);
+        EXPECT_EQ(marked.begin_marked(1), B + 2);
+        EXPECT_TRUE(event_matches(*(B + 2), 2));
+        EXPECT_EQ(marked.end_marked(3) - marked.begin_marked(3), 1u);
+        EXPECT_EQ(marked.begin_marked(3), B + 4);
+        EXPECT_TRUE(event_matches(*(B + 4), 4));
+    }
+
     m.drop_marked_events();
     EXPECT_TRUE(m.empty());
-
-    // Confirm different semantics of `mark_until`.
-
-    m.init(events);
-    t_until[cell_1] = 3.1f;
-    t_until[cell_2] = 1.9f;
-    t_until[cell_3] = 3.f;
-    m.mark_until(t_until);
-
-    // Only one event should be marked: 
-    //     events[1] (with handle 0) at t=3.f on cell_1
-    //
-    // events[2] at 3.f on cell_3 should not be marked (3.f not less than 3.f)
-    // events[0] at 2.f on cell_2 should not be marked (2.f not less than 1.9f)
-    //     events[2] (with handle 3) at t=3.f on cell_3
-    //     events[0] (with handle 1) at t=2.f on cell_2 should _not_ be marked.
-
-    for (cell_size_type i = 0; i<n_cell; ++i) {
-        auto evs = marked_range(m, i);
-        auto n_marked = evs.size();
-        switch (i) {
-        case cell_1:
-            EXPECT_EQ(1u, n_marked);
-            EXPECT_EQ(handle[0].mech_id, evs.front().mech_id);
-            EXPECT_EQ(handle[0].mech_index, evs.front().mech_index);
-            break;
-        default:
-            EXPECT_EQ(0u, n_marked);
-            break;
-        }
-    }
-
-}
-
-TEST(multi_event_stream, time_if_before) {
-    using multi_event_stream = multicore::multi_event_stream<deliverable_event>;
-
-    multi_event_stream m(n_cell);
-    ASSERT_EQ(n_cell, m.n_streams());
-
-    auto events = common_events;
-    ASSERT_TRUE(util::is_sorted_by(events, [](deliverable_event e) { return event_index(e); }));
-    m.init(events);
-
-    // Test times less than all event times (first event at t=2).
-    std::vector<double> before(n_cell);
-    std::vector<double> after;
-
-    for (unsigned i = 0; i<n_cell; ++i) {
-	before[i] = 0.1+i/(double)n_cell;
-    }
-
-    std::vector<double> t(before);
-    m.event_time_if_before(t);
-
-    EXPECT_EQ(before, t);
-
-    // With times between 2 and 3, expect the event at time t=2
-    // on cell_2 to restrict corresponding element of t.
-
-    for (unsigned i = 0; i<n_cell; ++i) {
-	before[i] = 2.1+0.5*i/(double)n_cell;
-    }
-    t = before;
-    m.event_time_if_before(t);
-
-    for (unsigned i = 0; i<n_cell; ++i) {
-	if (i==cell_2) {
-	    EXPECT_EQ(2., t[i]);
-	}
-	else {
-	    EXPECT_EQ(before[i], t[i]);
-	}
-    }
+    EXPECT_EQ(m.n_remaining(), 0u);
+    EXPECT_EQ(m.n_marked(), 0u);
+    EXPECT_EQ(m.marked_events().n_marked(), 0u);
 }

@@ -111,7 +111,7 @@ struct ARB_ARBOR_API istim_state {
     void reset();
 
     // Contribute to current density:
-    void add_current(const array& time, const iarray& cv_to_intdom, array& current_density);
+    void add_current(const arb_value_type& t, array& current_density);
 
     // Construct state from i_clamp data:
     istim_state(const fvm_stimulus_config& stim_data, unsigned align);
@@ -134,6 +134,8 @@ struct ARB_ARBOR_API shared_state {
         std::vector<arb_size_type> gid_;
         std::vector<arb_size_type> idx_;
         cbprng::counter_type random_number_update_counter_ = 0u;
+
+        deliverable_event_stream deliverable_events_;
     };
 
     cable_solver solver;
@@ -145,12 +147,10 @@ struct ARB_ARBOR_API shared_state {
     arb_size_type n_detector = 0; // Max number of detectors on all cells.
     arb_size_type n_cv = 0;   // Total number of CVs.
 
-    iarray cv_to_intdom;      // Maps CV index to integration domain index.
     iarray cv_to_cell;        // Maps CV index to the first spike
-    array time;               // Maps intdom index to integration start time [ms].
-    array time_to;            // Maps intdom index to integration stop time [ms].
-    array dt_intdom;          // Maps  index to (stop time) - (start time) [ms].
-    array dt_cv;              // Maps CV index to dt [ms].
+    arb_value_type time;      // integration start time [ms].
+    arb_value_type time_to;   // integration end time [ms]
+    arb_value_type dt;        // dt [ms].
     array voltage;            // Maps CV index to membrane voltage [mV].
     array current_density;    // Maps CV index to membrane current density contributions [A/m²].
     array conductivity;       // Maps CV index to membrane conductivity [kS/m²].
@@ -166,16 +166,14 @@ struct ARB_ARBOR_API shared_state {
 
     istim_state stim_data;
     std::unordered_map<std::string, ion_state> ion_data;
-    deliverable_event_stream deliverable_events;
     std::unordered_map<unsigned, mech_storage> storage;
 
     shared_state() = default;
 
     shared_state(
-        arb_size_type n_intdom,
         arb_size_type n_cell,
+        arb_size_type n_cv,
         arb_size_type n_detector,
-        const std::vector<arb_index_type>& cv_to_intdom_vec,
         const std::vector<arb_index_type>& cv_to_cell_vec,
         const std::vector<arb_value_type>& init_membrane_potential,
         const std::vector<arb_value_type>& temperature_K,
@@ -193,6 +191,13 @@ struct ARB_ARBOR_API shared_state {
 
     void update_prng_state(mechanism&);
 
+    void register_events(const std::map<cell_local_size_type, std::vector<deliverable_event>>&
+        staged_event_map);
+
+    void mark_events(arb_value_type t);
+
+    void deliver_events(mechanism& m);
+
     const arb_value_type* mechanism_state_data(const mechanism&, const std::string&);
 
     void add_ion(
@@ -209,11 +214,8 @@ struct ARB_ARBOR_API shared_state {
 
     void ions_nernst_reversal_potential(arb_value_type temperature_K);
 
-    // Set time_to to earliest of time+dt_step and tmax.
+    // Set time_to to earliest of time+dt_step and tmax and set dt
     void update_time_to(arb_value_type dt_step, arb_value_type tmax);
-
-    // Set the per-integration domain and per-compartment dt from time_to - time.
-    void set_dt();
 
     // Update stimulus state and add current contributions.
     void add_stimulus_current();
@@ -221,9 +223,6 @@ struct ARB_ARBOR_API shared_state {
     // Integrate by matrix solve.
     void integrate_voltage();
     void integrate_diffusion();
-
-    // Return minimum and maximum time value [ms] across cells.
-    std::pair<arb_value_type, arb_value_type> time_bounds() const;
 
     // Return minimum and maximum voltage value [mV] across cells.
     // (Used for solution bounds checking.)
