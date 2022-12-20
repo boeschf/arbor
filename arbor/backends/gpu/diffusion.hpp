@@ -15,7 +15,7 @@ ARB_ARBOR_API void assemble_diffusion(
     const arb_value_type* concentration,
     const arb_value_type* voltage,
     const arb_value_type* current,
-    const arb_value_type q,
+    const arb_value_type* charge,
     const arb_value_type* conductivity,
     const arb_value_type* area,
     const arb_index_type* cv_to_intdom,

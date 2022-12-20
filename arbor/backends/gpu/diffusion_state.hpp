@@ -410,14 +410,14 @@ public:
     //   voltage [mV]
     //   current density [A/m²]
     //   conductivity [kS/m²]
-    void assemble(const_view dt_intdom, const_view concentration, const_view voltage, const_view current, const_view conductivity, arb_value_type q) {
+    void assemble(const_view dt_intdom, const_view concentration, const_view voltage, const_view current, const_view conductivity, const_view charge) {
         assemble_diffusion(d.data(),
                            rhs.data(),
                            invariant_d.data(),
                            concentration.data(),
                            voltage.data(),
                            current.data(),
-                           q,
+                           charge.data(),
                            conductivity.data(),
                            cv_area.data(),
                            cv_to_intdom.data(),

@@ -393,7 +393,7 @@ void shared_state::integrate_diffusion() {
                                   voltage,
                                   data.iX_,
                                   data.gX_,
-                                  data.charge[0]);
+                                  data.charge);
             data.solver->solve(data.Xd_);
         }
     }

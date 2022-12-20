@@ -23,7 +23,7 @@ void assemble_diffusion(
         const T* __restrict__ const concentration,
         const T* __restrict__ const voltage,
         const T* __restrict__ const current,
-        const T q,
+        const T* __restrict__ const charge,
         const T* __restrict__ const conductivity,
         const T* __restrict__ const area,
         const I* __restrict__ const cv_to_intdom,
@@ -32,6 +32,7 @@ void assemble_diffusion(
         unsigned n) {
     const unsigned tid = threadIdx.x + blockDim.x*blockIdx.x;
     if (tid < n) {
+        const auto q = charge[0];
         const auto dt = dt_intdom[cv_to_intdom[tid]];
         const auto p = dt > 0;
         const auto pid = perm[tid];
@@ -219,7 +220,7 @@ ARB_ARBOR_API void assemble_diffusion(
     const arb_value_type* concentration,
     const arb_value_type* voltage,
     const arb_value_type* current,
-    arb_value_type q,
+    const arb_value_type* charge,
     const arb_value_type* conductivity,
     const arb_value_type* area,
     const arb_index_type* cv_to_intdom,
@@ -231,7 +232,7 @@ ARB_ARBOR_API void assemble_diffusion(
     const unsigned num_blocks = impl::block_count(n, block_dim);
 
     kernels::assemble_diffusion<<<num_blocks, block_dim>>>(
-        d, rhs, invariant_d, concentration, voltage, current, q, conductivity, area,
+        d, rhs, invariant_d, concentration, voltage, current, charge, conductivity, area,
         cv_to_intdom, dt_intdom, perm, n);
 }
 
