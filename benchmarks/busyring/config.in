@@ -1,0 +1,9 @@
+{
+    "name": "busy_ring",
+    "num-cells": #NUM_CELLS#,
+    "ring-size": #RING_SIZE#,
+    "duration": #DURATION#,
+    "dt": #DT#,
+    "min-delay": #MIN_DELAY#, 
+    "record": false
+}

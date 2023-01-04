@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jube>
+    <parameterset name="jobsystem_params">
+        <parameter name="submit_cmd">sbatch</parameter>
+        <parameter name="submit_cmd_args">srun</parameter>
+        <parameter name="run_cmd"></parameter>
+        <parameter name="run_cmd_args"></parameter>
+        <parameter name="node_idx">0,1,2,3,4,5</parameter>
+        <parameter name="max_node_idx">1</parameter>
+        <parameter name="nodes" mode="python">[1,2,4,8,16,32][$node_idx]</parameter>
+    </parameterset>
+
+    <parameterset name="bench_params">
+        <parameter name="num_cells" type="int">1000,2000</parameter>
+        <parameter name="ring_size" type="int">100</parameter>
+        <parameter name="duration" type="int">80</parameter>
+        <parameter name="dt" type="float">0.25</parameter>
+        <parameter name="min_delay" type="int">5</parameter>
+    </parameterset>
+</jube>
+
+
