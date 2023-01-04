@@ -480,6 +480,9 @@ add_subdirectory(test)
 # self contained examples:
 add_subdirectory(example)
 
+# large scale benchmarks
+add_subdirectory(benchmarks)
+
 # html:
 add_subdirectory(doc)
 

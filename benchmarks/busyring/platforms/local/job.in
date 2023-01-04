@@ -1,0 +1,4 @@
+
+echo "job-name=#BENCHNAME#"
+echo "number of nodes is: #NODES#"
+
