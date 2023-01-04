@@ -42,6 +42,7 @@
             <sub source="#DURATION#" dest="$duration" />
             <sub source="#DT#" dest="$dt" />
             <sub source="#MIN_DELAY#" dest="$min_delay" />
+            <sub source="#NUM_SYNAPSES#" dest="$num_synapses" />
             <iofile in="config.in" out="config" />
         </substituteset>
 
@@ -129,12 +130,13 @@
         <result>
             <use>analyse</use>
             <table name="result" style="pretty"
-                sort="node,num_cells,ring_size,duration,dt,min_delay,jube_wp_iteration">
+                sort="node,num_cells,ring_size,num_synapses,duration,dt,min_delay,jube_wp_iteration">
                 <column title="wp_id">jube_wp_id</column>
                 <column title="job_name">shared_job_name</column>
                 <column>nodes</column>
                 <column>num_cells</column>
                 <column>ring_size</column>
+                <column>num_synapses</column>
                 <column>duration</column>
                 <column>dt</column>
                 <column>min_delay</column>

@@ -6,4 +6,6 @@
     "dt": #DT#,
     "min-delay": #MIN_DELAY#, 
     "record": false
+    "depth": 5
+    "synapses": #NUM_SYNAPSES#
 }
