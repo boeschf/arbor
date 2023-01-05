@@ -4,7 +4,7 @@
 #SBATCH --account=csstaff
 #SBATCH --constraint=gpu
 #SBATCH --partition=normal
-#SBATCH --time=02:59:00
+#SBATCH --time=00:59:00
 #SBATCH --nodes=#NODES#
 #SBATCH --ntasks-per-node=1
 #SBATCH --ntasks-per-socket=1
