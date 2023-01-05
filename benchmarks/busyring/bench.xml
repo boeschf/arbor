@@ -129,8 +129,9 @@
         <!-- compile result table                                                                -->
         <result>
             <use>analyse</use>
-            <table name="result" style="pretty"
+            <table name="result" style="aligned"
                 sort="node,num_cells,ring_size,num_synapses,duration,dt,min_delay,jube_wp_iteration">
+                <column title="bench_id">jube_benchmark_id</column>
                 <column title="wp_id">jube_wp_id</column>
                 <column title="job_name">shared_job_name</column>
                 <column>nodes</column>
