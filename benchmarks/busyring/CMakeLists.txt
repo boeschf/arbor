@@ -11,7 +11,7 @@ add_custom_target(
     COMMAND ${CMAKE_COMMAND}
         -DINFILE=${CMAKE_CURRENT_SOURCE_DIR}/bench.xml
         -DOUTFILE=${ARB_BENCH_BUSYRING_DIR}/bench.xml
-        -DOUT_DIR=bench_run
+        -DOUT_DIR=runs
         -DWORK_DIR=${ARB_BENCH_SCRATCH_BUSYRING_DIR}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/configure_bench.cmake
 )
