@@ -1,0 +1,28 @@
+#!/bin/bash -l
+
+#SBATCH --job-name=#BENCHNAME#
+#SBATCH --account=csstaff
+#SBATCH --constraint=mc
+#SBATCH --partition=normal
+#SBATCH --time=00:59:00
+#SBATCH --nodes=#NODES#
+#SBATCH --ntasks-per-node=2
+#SBATCH --ntasks-per-socket=1
+#SBATCH --cpus-per-task=18
+#SBATCH --ntasks-per-core=1
+#SBATCH --hint=nomultithread
+
+module load daint-mc
+module rm PrgEnv-cray
+module load PrgEnv-gnu/6.0.10
+module load cdt/21.09
+module switch gcc gcc/11.2.0
+module load cray-python/3.9.4.1
+module unload xalt
+
+## for large jobs
+#export PMI_MMAP_SYNC_WAIT_TIME=300
+
+export MPICH_MAX_THREAD_SAFETY=multiple
+export MPICH_GNI_NDREG_ENTRIES=1024
+

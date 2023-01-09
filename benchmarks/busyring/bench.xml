@@ -5,12 +5,14 @@
     <include-path>
         <path tag="local">platforms/local</path>
         <path tag="daint_gpu">platforms/daint_gpu</path>
+        <path tag="daint_mc">platforms/daint_gpu</path>
     </include-path>
 
     <!-- platform names                                                                          -->
     <parameterset name="platforms">
         <parameter name="platform" tag="local">local</parameter>
         <parameter name="platform" tag="daint_gpu">daint_gpu</parameter>
+        <parameter name="platform" tag="daint_mc">daint_mc</parameter>
     </parameterset>
 
     <!-- main benchmark                                                                          -->
