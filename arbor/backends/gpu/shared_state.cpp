@@ -216,11 +216,12 @@ const arb_value_type* shared_state::mechanism_state_data(const mechanism& m, con
 }
 
 void shared_state::register_events(
-    const std::map<cell_local_size_type, std::vector<deliverable_event>>& staged_event_map) {
+    const std::map<cell_local_size_type, std::vector<deliverable_event>>& staged_event_map,
+    const timestep_range& dts) {
     for (auto& [mech_id, store] : storage) {
         if (auto it = staged_event_map.find(mech_id);
             it != staged_event_map.end() && it->second.size()) {
-            store.deliverable_events_.init(it->second);
+            store.deliverable_events_.init(it->second, dts);
         }
     }
 }
@@ -228,14 +229,9 @@ void shared_state::register_events(
 void shared_state::deliver_events(mechanism& m) {
     if (auto it = storage.find(m.mechanism_id()); it != storage.end()) {
         auto& deliverable_events = it->second.deliverable_events_;
-        if (auto es_state = deliverable_events.marked_events(); !es_state.empty()) {
-            arb_deliverable_event_stream ess{
-                es_state.begin_marked,
-                es_state.end_marked
-            };
-            m.deliver_events(ess);
+        if (auto es_state = deliverable_events.marked_events(); es_state.num_events > 0u) {
+            m.deliver_events(es_state);
         }
-        deliverable_events.drop_marked_events();
     }
 }
 
@@ -452,9 +448,9 @@ void shared_state::update_time_to(const timestep_range::timestep& ts) {
     dt = ts.dt();
 }
 
-void shared_state::mark_events(arb_value_type t) {
+void shared_state::mark_events() {
     for (auto& s : storage) {
-        s.second.deliverable_events_.mark_until(t);
+        s.second.deliverable_events_.mark();
     }
 }
 

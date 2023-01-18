@@ -21,13 +21,14 @@ public:
 
     using state = typename base::state;
 
-    void init(const std::vector<Event>& staged) {
-        base::init(staged);
+    void init(const std::vector<Event>& staged, const timestep_range& dts) {
+        base::init(staged, dts);
         device_ev_data_ = memory::make_view(base::ev_data_);
     }
 
     state marked_events() const {
-        return {device_ev_data_.data()+base::span_begin_, device_ev_data_.data()+base::span_end_};
+        if (base::empty()) return {nullptr, nullptr};
+        return {device_ev_data_.data()+base::offsets_[base::index_-1], device_ev_data_.data()+base::offsets_[base::index_]};
     }
 
 private:

@@ -3,6 +3,7 @@
 #include <unordered_set>
 #include <variant>
 #include <vector>
+#include <iostream>
 
 #include <arbor/assert.hpp>
 #include <arbor/common_types.hpp>
@@ -395,24 +396,15 @@ void mc_cell_group::advance(epoch ep, time_type dt, const event_lane_subrange& e
                 // Events coinciding with epoch's upper boundary belong to next epoch
                 if (e.time>=ep.t1) break;
                 auto h = target_handles_[target_handle_divisions_[lid]+e.target];
-                staged_event_map_[h.mech_id].emplace_back(e.time, h, e.weight);
+                auto& vec = staged_event_map_[h.mech_id];
+                vec.emplace_back(e.time, h, e.weight);
             }
             ++lid;
         }
     }
 
-    // Sort the events so that processing can be optimised later. Sort by
-    // 1) timestep index
-    // 2) within a timestep: by mech_index (target)
-    // 3) within a mech_index: by time (guranteed by stable sorting)
     for (auto& [mech_id, event_vec] : staged_event_map_) {
-        arb_assert(std::is_sorted(event_vec.begin(), event_vec.end(),
-            [](const auto& a, const auto& b) { return a.time < b.time; }));
-        std::stable_sort(event_vec.begin(), event_vec.end(),
-            [this](const auto& a, const auto& b) {
-                const auto ia = timesteps_.index(a.time);
-                const auto ib = timesteps_.index(b.time);
-                return (ia < ib) || ((ia == ib) && (a.handle.mech_index < b.handle.mech_index)); });
+        util::stable_sort_by(event_vec, [](const auto& ev) { return event_index(ev); });
     }
     PL();
 
