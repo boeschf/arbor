@@ -1,3 +1,6 @@
+//#include <chrono>
+#include <memory>
+#include <functional>
 #include <utility>
 #include <string>
 
@@ -81,6 +84,108 @@ template <typename... ARGS>
 inline api_error_type device_mem_get_info(ARGS &&... args) {
     return cudaMemGetInfo(std::forward<ARGS>(args)...);
 }
+
+
+namespace detail {
+
+struct callback_holder {
+    std::function<void()> f;
+    std::shared_ptr<callback_holder> self_ref;
+
+    template<typename F>
+    callback_holder(F&& func): f{std::forward<F>(func)} {}
+
+    static void stream_callback(cudaStream_t /*stream*/, cudaError_t /*status*/, void* data) {
+        // increase use_cout to 2
+        std::shared_ptr<callback_holder> _this = reinterpret_cast<callback_holder*>(data)->self_ref;
+        // decrease use_count to 1
+        _this->self_ref.reset();
+        _this->f();
+        // clean up resources at exit
+    }
+};
+
+} // namespace detail
+
+//api_error_type add_callback(void(cb*)(void*), void* user_data) {
+template<typename F>
+api_error_type add_callback(F&& f) {
+    auto h = std::make_shared<detail::callback_holder>(std::forward<F>(f));
+    // add self-reference to avoid destruction at exit
+    h->self_ref = h;
+    return cudaStreamAddCallback(0, detail::callback_holder::stream_callback, h.get(), 0);
+}
+
+//namespace chrono {
+//
+//class clock;
+//
+//class time_point {
+//public:
+//    friend class clock;
+//
+//    using duration = std::chrono::duration<float, std::milli>;
+//
+//    time_point() = default;
+//
+//    time_point(const time_point&) = delete;
+//
+//    time_point(time_point&& other)
+//    : event_{std::exchange(other.event_, nullptr)}
+//    , synchronized_{std::exchange(other.synchronized_, false)} {}
+//
+//    time_point& operator=(const time_point&) = delete;
+//
+//    time_point& operator=(time_point&& other) {
+//        if (event_) cudaEventDestroy(event_);
+//        event_ = std::exchange(other.event_, nullptr);
+//        synchronized_ = std::exchange(other.synchronized_, false);
+//        return *this;
+//    }
+//
+//    ~time_point() {
+//        if (event_) cudaEventDestroy(event_);
+//    }
+//
+//    friend duration operator-(time_point& a, time_point& b);
+//
+//private:
+//    time_point(cudaEvent_t e) : event_{e} {}
+//
+//    void sync() {
+//        if (event_ && !synchronized_) {
+//            cudaEventSynchronize(event_);
+//            synchronized_ = true;
+//        }
+//    }
+//
+//    bool valid() const {  return (bool)event_; }
+//
+//    cudaEvent_t event_ = nullptr;
+//    bool synchronized_ = false;
+//};
+//
+//time_point::duration operator-(time_point& a, time_point& b) {
+//    if (!(a.valid() && b.valid())) return time_point::duration(0.0f);
+//    a.sync();
+//    float m;
+//    cudaEventElapsedTime(&m, a.event_, b.event_);
+//    return time_point::duration(m);
+//};
+//
+//class clock {
+//public:
+//    using duration = time_point::duration;
+//
+//    static time_point now() {
+//        cudaEvent_t event;
+//        cudaEventCreate(&event);
+//        cudaEventRecord(event);
+//        return {event};
+//    }
+//};
+//
+//} // namespace chrono
 
 #ifdef __CUDACC__
 /// Atomics

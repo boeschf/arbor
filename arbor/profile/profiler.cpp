@@ -10,6 +10,10 @@
 #include "util/span.hpp"
 #include "util/rangeutil.hpp"
 
+#ifdef ARB_GPU_ENABLED
+#include "device_accumulator.hpp"
+#endif
+
 namespace arb {
 namespace profile {
 
@@ -47,6 +51,9 @@ namespace {
 struct profile_accumulator {
     std::size_t count=0;
     double time=0.;
+#ifdef ARB_GPU_ENABLED
+    device_accumulator<> device_acc;
+#endif
 };
 
 // Records the accumulated time spent in profiler regions on one thread.
@@ -99,13 +106,15 @@ class profiler {
     // Used to protect name_index_, which is shared between all threads.
     std::mutex mutex_;
 
+    bool has_gpu_ = false;
+
     // Flag to indicate whether the profiler has been initialized with the task_system
     bool init_ = false;
 
 public:
     profiler();
 
-    void initialize(task_system_handle& ts);
+    void initialize(task_system_handle& ts, bool has_gpu);
     void enter(region_id_type index);
     void enter(const std::string& name);
     void leave();
@@ -126,6 +135,9 @@ struct profile_node {
 
     std::string name;
     double time = 0;
+#ifdef ARB_GPU_ENABLED
+    double device_time = 0;
+#endif
     region_id_type count = npos;
     std::vector<profile_node> children;
 
@@ -151,6 +163,9 @@ void recorder::enter(region_id_type index) {
     }
     index_ = index;
     start_time_ = timer_type::tic();
+#ifdef ARB_GPU_ENABLED
+    accumulators_[index_].device_acc.tic();
+#endif
 }
 
 void recorder::leave() {
@@ -162,6 +177,9 @@ void recorder::leave() {
     }
     accumulators_[index_].count++;
     accumulators_[index_].time += delta;
+#ifdef ARB_GPU_ENABLED
+    accumulators_[index_].device_acc.toc();
+#endif
     index_ = npos;
 }
 
@@ -174,9 +192,10 @@ void recorder::clear() {
 
 profiler::profiler() {}
 
-void profiler::initialize(task_system_handle& ts) {
+void profiler::initialize(task_system_handle& ts, bool has_gpu) {
     recorders_.resize(ts.get()->get_num_threads());
     thread_ids_ = ts.get()->get_thread_ids();
+    has_gpu_ = has_gpu;
     init_ = true;
 }
 
@@ -243,8 +262,12 @@ profile profiler::results() const {
         for (auto i: make_span(0, accumulators.size())) {
             p.times[i]  += accumulators[i].time;
             p.counts[i] += accumulators[i].count;
+#ifdef ARB_GPU_ENABLED
+            p.device_times[i] = accumulators[i].device_acc.get();
+#endif
         }
     }
+
 
     p.num_threads = recorders_.size();
 
@@ -260,6 +283,11 @@ profile profiler::results() const {
         p.counts.pop_back();
         p.times.pop_back();
         p.names.pop_back();
+#ifdef ARB_GPU_ENABLED
+#pragma message "asdfasdf"
+        std::swap(p.device_times[i],  p.device_times.back());
+        p.device_times.pop_back();
+#endif
     }
 
     return p;
@@ -296,6 +324,9 @@ profile_node make_profile_tree(const profile& p) {
             }
         }
         node->children.emplace_back(names[idx].back(), p.times[idx], p.counts[idx]);
+#ifdef ARB_GPU_ENABLED
+        node->children.back().device_time = p.device_times[idx];
+#endif
     }
     sort_profile_tree(tree);
 
@@ -318,18 +349,31 @@ void print(std::ostream& o,
     auto name = indent + n.name;
     float per_thread_time = n.time/nthreads;
     float proportion = n.time/wall_time*100;
+#ifdef ARB_GPU_ENABLED
+    float device_time = n.device_time;
+#endif
 
     // If the percentage of overall time for this region is below the
     // threashold, stop drawing this branch.
     if (proportion<thresh) return;
 
     if (n.count==profile_node::npos) {
+#ifndef ARB_GPU_ENABLED
         snprintf(buf, std::size(buf), "_p_ %-20s%12s%12.3f%12.3f%8.1f",
                name.c_str(), "-", float(n.time), per_thread_time, proportion);
+#else
+        snprintf(buf, std::size(buf), "_p_ %-20s%12s%12.3f%12.3f%8.1f%12.3f",
+               name.c_str(), "-", float(n.time), per_thread_time, proportion, device_time);
+#endif
     }
     else {
+#ifndef ARB_GPU_ENABLED
         snprintf(buf, std::size(buf), "_p_ %-20s%12lu%12.3f%12.3f%8.1f",
                name.c_str(), n.count, float(n.time), per_thread_time, proportion);
+#else
+        snprintf(buf, std::size(buf), "_p_ %-20s%12lu%12.3f%12.3f%8.1f%12.3f",
+               name.c_str(), n.count, float(n.time), per_thread_time, proportion, device_time);
+#endif
     }
     o << "\n" << buf;
 
@@ -357,7 +401,7 @@ ARB_ARBOR_API void profiler_enter(region_id_type region_id) {
 }
 
 ARB_ARBOR_API void profiler_initialize(context ctx) {
-    profiler::get_global_profiler().initialize(ctx->thread_pool);
+    profiler::get_global_profiler().initialize(ctx->thread_pool, ctx->gpu->has_gpu());
 }
 
 // Print profiler statistics to an ostream
@@ -366,7 +410,11 @@ ARB_ARBOR_API std::ostream& operator<<(std::ostream& o, const profile& prof) {
 
     auto tree = make_profile_tree(prof);
 
+#ifndef ARB_GPU_ENABLED
     snprintf(buf, std::size(buf), "_p_ %-20s%12s%12s%12s%8s", "REGION", "CALLS", "THREAD", "WALL", "\%");
+#else
+    snprintf(buf, std::size(buf), "_p_ %-20s%12s%12s%12s%8s%12s", "REGION", "CALLS", "THREAD", "WALL", "\%", "GPU");
+#endif
     o << buf;
     print(o, tree, tree.time, prof.num_threads, 0, "");
     return o;
