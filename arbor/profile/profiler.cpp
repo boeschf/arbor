@@ -51,9 +51,6 @@ namespace {
 struct profile_accumulator {
     std::size_t count=0;
     double time=0.;
-#ifdef ARB_GPU_ENABLED
-    device_accumulator<> device_acc;
-#endif
 };
 
 // Records the accumulated time spent in profiler regions on one thread.
@@ -70,10 +67,16 @@ class recorder {
 
     // One accumulator for call count and wall time for each region.
     std::vector<profile_accumulator> accumulators_;
+#ifdef ARB_GPU_ENABLED
+    std::vector<device_accumulator<>> device_accumulators_;
+#endif
 
 public:
     // Return a list of the accumulated call count and wall times for each region.
     const std::vector<profile_accumulator>& accumulators() const;
+#ifdef ARB_GPU_ENABLED
+    const std::vector<device_accumulator<>>& device_accumulators() const;
+#endif
 
     // Start timing the region with index.
     // Throws std::runtime_error if already timing a region.
@@ -106,6 +109,7 @@ class profiler {
     // Used to protect name_index_, which is shared between all threads.
     std::mutex mutex_;
 
+    // Flag to indicate whether GPU time should be accumulated
     bool has_gpu_ = false;
 
     // Flag to indicate whether the profiler has been initialized with the task_system
@@ -153,6 +157,11 @@ struct profile_node {
 const std::vector<profile_accumulator>& recorder::accumulators() const {
     return accumulators_;
 }
+#ifdef ARB_GPU_ENABLED
+const std::vector<device_accumulator<>>& recorder::device_accumulators() const {
+    return device_accumulators_;
+}
+#endif
 
 void recorder::enter(region_id_type index) {
     if (index_!=npos) {
@@ -160,11 +169,14 @@ void recorder::enter(region_id_type index) {
     }
     if (index>=accumulators_.size()) {
         accumulators_.resize(index+1);
+#ifdef ARB_GPU_ENABLED
+        device_accumulators_.resize(index+1);
+#endif
     }
     index_ = index;
     start_time_ = timer_type::tic();
 #ifdef ARB_GPU_ENABLED
-    accumulators_[index_].device_acc.tic();
+    device_accumulators_[index_].tic();
 #endif
 }
 
@@ -178,7 +190,7 @@ void recorder::leave() {
     accumulators_[index_].count++;
     accumulators_[index_].time += delta;
 #ifdef ARB_GPU_ENABLED
-    accumulators_[index_].device_acc.toc();
+    device_accumulators_[index_].toc();
 #endif
     index_ = npos;
 }
@@ -186,6 +198,9 @@ void recorder::leave() {
 void recorder::clear() {
     index_ = npos;
     accumulators_.resize(0);
+#ifdef ARB_GPU_ENABLED
+    device_accumulators_.resize(0);
+#endif
 }
 
 // profiler implementation
@@ -263,7 +278,7 @@ profile profiler::results() const {
             p.times[i]  += accumulators[i].time;
             p.counts[i] += accumulators[i].count;
 #ifdef ARB_GPU_ENABLED
-            p.device_times[i] = accumulators[i].device_acc.get();
+            p.device_times[i] = r.device_accumulators()[i].get();
 #endif
         }
     }
