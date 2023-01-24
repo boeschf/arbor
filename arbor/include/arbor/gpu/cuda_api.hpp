@@ -1,4 +1,4 @@
-//#include <chrono>
+#include <chrono>
 #include <memory>
 #include <functional>
 #include <utility>
@@ -117,76 +117,82 @@ api_error_type add_callback(F&& f) {
     return cudaStreamAddCallback(0, detail::callback_holder::stream_callback, h.get(), 0);
 }
 
-//namespace chrono {
-//
-//class clock;
-//
-//class time_point {
-//public:
-//    friend class clock;
-//
-//    using duration = std::chrono::duration<float, std::milli>;
-//
-//    time_point() = default;
-//
-//    time_point(const time_point&) = delete;
-//
-//    time_point(time_point&& other)
-//    : event_{std::exchange(other.event_, nullptr)}
-//    , synchronized_{std::exchange(other.synchronized_, false)} {}
-//
-//    time_point& operator=(const time_point&) = delete;
-//
-//    time_point& operator=(time_point&& other) {
-//        if (event_) cudaEventDestroy(event_);
-//        event_ = std::exchange(other.event_, nullptr);
-//        synchronized_ = std::exchange(other.synchronized_, false);
-//        return *this;
-//    }
-//
-//    ~time_point() {
-//        if (event_) cudaEventDestroy(event_);
-//    }
-//
-//    friend duration operator-(time_point& a, time_point& b);
-//
-//private:
-//    time_point(cudaEvent_t e) : event_{e} {}
-//
-//    void sync() {
-//        if (event_ && !synchronized_) {
-//            cudaEventSynchronize(event_);
-//            synchronized_ = true;
-//        }
-//    }
-//
-//    bool valid() const {  return (bool)event_; }
-//
-//    cudaEvent_t event_ = nullptr;
-//    bool synchronized_ = false;
-//};
-//
-//time_point::duration operator-(time_point& a, time_point& b) {
-//    if (!(a.valid() && b.valid())) return time_point::duration(0.0f);
-//    a.sync();
-//    float m;
-//    cudaEventElapsedTime(&m, a.event_, b.event_);
-//    return time_point::duration(m);
-//};
-//
-//class clock {
-//public:
-//    using duration = time_point::duration;
-//
-//    static time_point now() {
-//        cudaEvent_t event;
-//        cudaEventCreate(&event);
-//        cudaEventRecord(event);
-//        return {event};
-//    }
-//};
-//
-//} // namespace chrono
+namespace chrono {
+
+class clock;
+
+class time_point {
+public:
+    friend class clock;
+
+    using duration = std::chrono::duration<float, std::milli>;
+
+    time_point() = default;
+
+    time_point(const time_point&) = delete;
+
+    time_point(time_point&& other)
+    : event_{std::exchange(other.event_, nullptr)}
+    , synchronized_{std::exchange(other.synchronized_, false)} {}
+
+    time_point& operator=(const time_point&) = delete;
+
+    time_point& operator=(time_point&& other) {
+        if (valid()) cudaEventDestroy(event_);
+        event_ = std::exchange(other.event_, nullptr);
+        synchronized_ = std::exchange(other.synchronized_, false);
+        return *this;
+    }
+
+    ~time_point() {
+        if (valid()) cudaEventDestroy(event_);
+    }
+
+    bool ready() const {
+        if (!valid() || synchronized_) return true;
+        else return (cudaEventQuery(event_) == cudaSuccess);
+    }
+
+    friend duration operator-(time_point& a, time_point& b);
+
+private:
+    time_point(cudaEvent_t e) : event_{e} {}
+
+    void sync() {
+        if (valid() && !synchronized_) {
+            cudaEventSynchronize(event_);
+            synchronized_ = true;
+        }
+    }
+
+    bool valid() const {  return (bool)event_; }
+
+    cudaEvent_t event_ = nullptr;
+    bool synchronized_ = false;
+};
+
+time_point::duration operator-(time_point& end, time_point& start) {
+    if (!(start.valid() && end.valid())) return time_point::duration(0.0f);
+    start.sync();
+    end.sync();
+    float m;
+    cudaEventElapsedTime(&m, start.event_, end.event_);
+    return time_point::duration(m);
+};
+
+class clock {
+public:
+    using duration = time_point::duration;
+
+    static time_point now() {
+        cudaEvent_t event;
+        cudaEventCreate(&event);
+        cudaEventRecord(event);
+        return {event};
+    }
+};
+
+} // namespace chrono
 
 #ifdef __CUDACC__
 /// Atomics
