@@ -4,8 +4,8 @@
 #include <functional>
 #include <future>
 #include <memory>
-#include <stdexcept>
 
+#include <arbor/arbexcept.hpp>
 #include <arbor/gpu/gpu_api.hpp>
 #include <arbor/profile/profiler.hpp>
 
@@ -22,14 +22,15 @@ struct device_accumulator {
     struct record {
         tick_type host_start_time;
         tick_type host_end_time;
-        tick_type start_time;
-        std::promise<tick_type> promise;
-        std::future<tick_type> future;
+        std::promise<tick_type> start_promise, end_promise;
+        std::future<tick_type> start_future, end_future;
 
         void reset() {
             host_start_time = timer_type::tic();
-            promise = std::promise<tick_type>{};
-            future = promise.get_future();
+            start_promise = std::promise<tick_type>{};
+            end_promise = std::promise<tick_type>{};
+            start_future = start_promise.get_future();
+            end_future = end_promise.get_future();
         }
     };
 
@@ -40,7 +41,7 @@ struct device_accumulator {
 
     // start timing
     void tic() {
-        if (recording) throw std::runtime_error("toc() has not been called");
+        if (recording) throw arbor_exception("device_accumulator: toc() has not been called");
         recording = true;
         // wait for one timing to finish if there is no space
         if (capacity == 0) accumulate(records[current]);
@@ -49,28 +50,48 @@ struct device_accumulator {
         r.reset();
         current = increment(current);
         --capacity;
-        ::arb::gpu::add_callback([&r](){
-            r.start_time = timer_type::tic();
-        });
+        auto tic_callback = [p=&r](::arb::gpu::api_error_type status) {
+            if (status) {
+                p->start_promise.set_value(timer_type::tic());
+            }
+            else {
+                p->start_promise.set_exception(
+                    std::make_exception_ptr(
+                        arbor_exception("device_accumulator: " + status.description())));
+            }
+        };
+        if (auto status = ::arb::gpu::add_callback(tic_callback); !status) {
+            throw arbor_exception("device_accumulator: " + status.description());
+        }
     }
 
     // end timing
     void toc() {
-        if (!recording) throw std::runtime_error("tic() has not been called");
+        if (!recording) throw arbor_exception("device_accumulator: tic() has not been called");
         recording = false;
         auto& r = records[decrement(current)];
         r.host_end_time = timer_type::tic();
-        //launch_function(toc_callback, &r);
-        ::arb::gpu::add_callback([&r](){
-            r.promise.set_value(timer_type::tic());
-        });
+        auto toc_callback = [p=&r](::arb::gpu::api_error_type status) {
+            if (status) {
+                p->end_promise.set_value(timer_type::tic());
+            }
+            else {
+                p->start_promise.set_exception(
+                    std::make_exception_ptr(
+                        arbor_exception("device_accumulator: " + status.description())));
+            }
+        };
+        if (auto status = ::arb::gpu::add_callback(toc_callback); !status) {
+            throw arbor_exception("device_accumulator: " + status.description());
+        }
         check();
     }
 
     void accumulate(record& r) {
-        const auto end_time = r.future.get();
+        const auto start_time = r.start_future.get();
+        const auto end_time = r.end_future.get();
         //const double elapsed_host = (end_time-r.host_start_time)*timer_type::seconds_per_tick();
-        const double elapsed_device = (end_time-r.start_time)*timer_type::seconds_per_tick();
+        const double elapsed_device = (end_time-start_time)*timer_type::seconds_per_tick();
         sum += elapsed_device;
         ++capacity;
     }
@@ -81,7 +102,7 @@ struct device_accumulator {
         const auto end = current;
         for(auto begin = start(); begin != end; increment(begin)) {
             auto& r = records[begin];
-            if(auto status = r.future.wait_for(10us); status == std::future_status::ready) {
+            if(auto status = r.end_future.wait_for(10us); status == std::future_status::ready) {
                 accumulate(r);
             }
             else {
@@ -92,7 +113,7 @@ struct device_accumulator {
 
     // wait for all currently pending timings to finish
     void wait() {
-        if (recording) throw std::runtime_error("toc() has not been called");
+        if (recording) throw arbor_exception("device_accumulator: toc() has not been called");
         current = start();
         const size_type n = size();
         for (size_type i = 0; i < n; ++i) {
