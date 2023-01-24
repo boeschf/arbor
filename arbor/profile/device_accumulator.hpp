@@ -91,11 +91,11 @@ struct device_accumulator {
         //if (auto status = ::arb::gpu::add_callback(toc_callback); !status) {
         //    throw arbor_exception("device_accumulator: " + status.description());
         //}
-        check();
+        //check();
     }
 
     void accumulate(record& r) {
-        const double elapsed_device = (r.end_time - r.start_time).count() * 1000.0; 
+        const double elapsed_device = (r.end_time - r.start_time).count() * 1.0e-3; 
         //const auto start_time = r.start_future.get();
         //const auto end_time = r.end_future.get();
         ////const double elapsed_host = (end_time-r.host_start_time)*timer_type::seconds_per_tick();
@@ -104,21 +104,22 @@ struct device_accumulator {
         ++capacity;
     }
 
-    // check if any futures are ready and free up capacity
-    void check() {
-        using namespace std::chrono_literals;
-        const auto end = current;
-        for(auto begin = start(); begin != end; increment(begin)) {
-            auto& r = records[begin];
-            if (r.start_time.ready() && r.end_time.ready()) {
-            //if(auto status = r.end_future.wait_for(10us); status == std::future_status::ready) {
-                accumulate(r);
-            }
-            else {
-                break;
-            }
-        }
-    }
+    //// check if any futures are ready and free up capacity
+    //void check() {
+    //    using namespace std::chrono_literals;
+    //    const auto end = current;
+    //    for(auto begin = start(); begin != end; increment(begin)) {
+    //        auto& r = records[begin];
+    //        //if (r.start_time.ready() && r.end_time.ready()) {
+    //        if (r.end_time.ready()) {
+    //        //if(auto status = r.end_future.wait_for(10us); status == std::future_status::ready) {
+    //            accumulate(r);
+    //        }
+    //        else {
+    //            break;
+    //        }
+    //    }
+    //}
 
     // wait for all currently pending timings to finish
     void wait() {

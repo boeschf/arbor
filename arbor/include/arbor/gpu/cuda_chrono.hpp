@@ -2,7 +2,7 @@
 
 #include <arbor/arbexcept.hpp>
 
-#include "cuda_api.hpp"
+#include "gpu_api.hpp"
 
 namespace arb {
 namespace gpu {
@@ -27,7 +27,10 @@ public:
     time_point& operator=(const time_point&) = delete;
 
     time_point& operator=(time_point&& other) {
-        if (valid()) cudaEventDestroy(event_);
+        if (valid()) {
+            api_error_type status = cudaEventDestroy(event_);
+            if (!status) throw arbor_exception("cuda exception: " + status.name() + ": " + status.description());
+        }
         event_ = std::exchange(other.event_, nullptr);
         synchronized_ = std::exchange(other.synchronized_, false);
         return *this;
@@ -37,14 +40,25 @@ public:
         if (valid()) cudaEventDestroy(event_);
     }
 
-    bool ready() const {
-        if (!valid() || synchronized_) return true;
-        else {
-            api_error_type status = cudaEventQuery(event_);
-            if (status) return true;
-            else throw arbor_exception("cuda exception: " + status.name() + ": " + status.description());
-        }
-    }
+    //bool ready() {
+    //    if (!valid() || synchronized_) {
+    //        return true;
+    //    }
+    //    else {
+    //        auto ret = cudaEventQuery(event_);
+    //        if (ret == cudaSuccess) {
+    //            synchronized_ = true;
+    //            return true;
+    //        }
+    //        else if (ret == cudaErrorNotReady) {
+    //            return false;
+    //        }
+    //        else {
+    //            api_error_type status(ret);
+    //            throw arbor_exception("cuda exception: " + status.name() + ": " + status.description());
+    //        }
+    //    }
+    //}
 
     friend duration operator-(time_point& a, time_point& b);
 
@@ -66,8 +80,9 @@ private:
 };
 
 inline time_point::duration operator-(time_point& end, time_point& start) {
-    if (!(start.valid() && end.valid())) return time_point::duration(0.0f);
-    start.sync();
+    if (!(start.valid() && end.valid())) {
+        throw arbor_exception("cuda exception: event not valid");
+    }
     end.sync();
     float m;
     api_error_type status = cudaEventElapsedTime(&m, start.event_, end.event_);
