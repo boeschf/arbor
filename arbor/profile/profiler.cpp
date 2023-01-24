@@ -411,12 +411,18 @@ void print(std::ostream& os,
     std::size_t max_len_thread = 0;
     std::size_t max_len_time = 0;
     std::size_t max_len_percent = 0;
+#ifdef ARB_GPU_ENABLED
+    std::size_t max_len_device_time = 0;
+#endif
     for (const auto& line: lines) {
         max_len_name = std::max(max_len_name, line.name.size());
         max_len_count = std::max(max_len_count, line.count.size());
         max_len_thread = std::max(max_len_thread, line.thread.size());
         max_len_time = std::max(max_len_time, line.time.size());
         max_len_percent = std::max(max_len_percent, line.percent.size());
+#ifdef ARB_GPU_ENABLED
+        max_len_device_time = std::max(max_len_device_time, line.device_time.size());
+#endif
     }
 
     auto lpad = [](const std::string& s, std::size_t n) { return std::string(n - s.size(), ' ') + s + "    "; };
@@ -427,6 +433,9 @@ void print(std::ostream& os,
                                      << lpad(line.thread, max_len_thread)
                                      << lpad(line.time, max_len_time)
                                      << lpad(line.percent, max_len_percent)
+#ifdef ARB_GPU_ENABLED
+                                     << lpad(line.device_time, max_len_device_time)
+#endif
                                      << '\n';
 };
 
