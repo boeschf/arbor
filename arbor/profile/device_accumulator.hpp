@@ -1,3 +1,5 @@
+#pragma once
+
 #include <array>
 #include <cassert>
 #include <chrono>
@@ -6,7 +8,7 @@
 #include <memory>
 
 #include <arbor/arbexcept.hpp>
-#include <arbor/gpu/gpu_api.hpp>
+#include <arbor/gpu/chrono.hpp>
 #include <arbor/profile/profiler.hpp>
 
 namespace arb {
