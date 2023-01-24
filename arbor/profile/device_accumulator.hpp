@@ -22,15 +22,19 @@ struct device_accumulator {
     struct record {
         tick_type host_start_time;
         tick_type host_end_time;
-        std::promise<tick_type> start_promise, end_promise;
-        std::future<tick_type> start_future, end_future;
+        ::arb::gpu::chrono::time_point start_time;
+        ::arb::gpu::chrono::time_point end_time;
+        //std::promise<tick_type> start_promise, end_promise;
+        //std::future<tick_type> start_future, end_future;
 
         void reset() {
             host_start_time = timer_type::tic();
-            start_promise = std::promise<tick_type>{};
-            end_promise = std::promise<tick_type>{};
-            start_future = start_promise.get_future();
-            end_future = end_promise.get_future();
+            start_time = ::arb::gpu::chrono::clock::now();
+            end_time = ::arb::gpu::chrono::time_point{};
+            //start_promise = std::promise<tick_type>{};
+            //end_promise = std::promise<tick_type>{};
+            //start_future = start_promise.get_future();
+            //end_future = end_promise.get_future();
         }
     };
 
@@ -50,19 +54,19 @@ struct device_accumulator {
         r.reset();
         current = increment(current);
         --capacity;
-        auto tic_callback = [p=&r](::arb::gpu::api_error_type status) {
-            if (status) {
-                p->start_promise.set_value(timer_type::tic());
-            }
-            else {
-                p->start_promise.set_exception(
-                    std::make_exception_ptr(
-                        arbor_exception("device_accumulator: " + status.description())));
-            }
-        };
-        if (auto status = ::arb::gpu::add_callback(tic_callback); !status) {
-            throw arbor_exception("device_accumulator: " + status.description());
-        }
+        //auto tic_callback = [p=&r](::arb::gpu::api_error_type status) {
+        //    if (status) {
+        //        p->start_promise.set_value(timer_type::tic());
+        //    }
+        //    else {
+        //        p->start_promise.set_exception(
+        //            std::make_exception_ptr(
+        //                arbor_exception("device_accumulator: " + status.description())));
+        //    }
+        //};
+        //if (auto status = ::arb::gpu::add_callback(tic_callback); !status) {
+        //    throw arbor_exception("device_accumulator: " + status.description());
+        //}
     }
 
     // end timing
@@ -71,27 +75,29 @@ struct device_accumulator {
         recording = false;
         auto& r = records[decrement(current)];
         r.host_end_time = timer_type::tic();
-        auto toc_callback = [p=&r](::arb::gpu::api_error_type status) {
-            if (status) {
-                p->end_promise.set_value(timer_type::tic());
-            }
-            else {
-                p->start_promise.set_exception(
-                    std::make_exception_ptr(
-                        arbor_exception("device_accumulator: " + status.description())));
-            }
-        };
-        if (auto status = ::arb::gpu::add_callback(toc_callback); !status) {
-            throw arbor_exception("device_accumulator: " + status.description());
-        }
+        r.end_time = ::arb::gpu::chrono::clock::now();
+        //auto toc_callback = [p=&r](::arb::gpu::api_error_type status) {
+        //    if (status) {
+        //        p->end_promise.set_value(timer_type::tic());
+        //    }
+        //    else {
+        //        p->start_promise.set_exception(
+        //            std::make_exception_ptr(
+        //                arbor_exception("device_accumulator: " + status.description())));
+        //    }
+        //};
+        //if (auto status = ::arb::gpu::add_callback(toc_callback); !status) {
+        //    throw arbor_exception("device_accumulator: " + status.description());
+        //}
         check();
     }
 
     void accumulate(record& r) {
-        const auto start_time = r.start_future.get();
-        const auto end_time = r.end_future.get();
-        //const double elapsed_host = (end_time-r.host_start_time)*timer_type::seconds_per_tick();
-        const double elapsed_device = (end_time-start_time)*timer_type::seconds_per_tick();
+        const double elapsed_device = (r.end_time - r.start_time).count() * 1000.0; 
+        //const auto start_time = r.start_future.get();
+        //const auto end_time = r.end_future.get();
+        ////const double elapsed_host = (end_time-r.host_start_time)*timer_type::seconds_per_tick();
+        //const double elapsed_device = (end_time-start_time)*timer_type::seconds_per_tick();
         sum += elapsed_device;
         ++capacity;
     }
@@ -102,7 +108,8 @@ struct device_accumulator {
         const auto end = current;
         for(auto begin = start(); begin != end; increment(begin)) {
             auto& r = records[begin];
-            if(auto status = r.end_future.wait_for(10us); status == std::future_status::ready) {
+            if (r.start_time.ready() && r.end_time.ready()) {
+            //if(auto status = r.end_future.wait_for(10us); status == std::future_status::ready) {
                 accumulate(r);
             }
             else {
