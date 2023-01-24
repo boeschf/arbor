@@ -27,9 +27,7 @@ struct profile {
 
     // the accumulated time spent in each region.
     std::vector<double> times;
-#ifdef ARB_GPU_ENABLED
     std::vector<double> device_times;
-#endif
 
     // the number of threads for which profiling information was recorded.
     std::size_t num_threads;
