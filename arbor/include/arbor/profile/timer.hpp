@@ -14,6 +14,8 @@ struct timer {
     static inline double toc(tick_type t) {
         return (Clock::now()-t)*Clock::seconds_per_tick();
     }
+
+    static constexpr double seconds_per_tick() { return Clock::seconds_per_tick(); }
 };
 
 } // namespace profile

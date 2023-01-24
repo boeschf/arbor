@@ -1,3 +1,5 @@
+#include <memory>
+#include <functional>
 #include <utility>
 #include <string>
 
@@ -16,6 +18,7 @@ using DeviceProp = cudaDeviceProp;
 
 struct ARB_SYMBOL_VISIBLE api_error_type {
     cudaError_t value;
+    api_error_type(): value(cudaSuccess) {}
     api_error_type(cudaError_t e): value(e) {}
 
     operator bool() const {
@@ -80,6 +83,36 @@ inline api_error_type device_free(ARGS &&... args) {
 template <typename... ARGS>
 inline api_error_type device_mem_get_info(ARGS &&... args) {
     return cudaMemGetInfo(std::forward<ARGS>(args)...);
+}
+
+namespace detail {
+
+struct callback_holder {
+    std::function<void(api_error_type)> f;
+    std::shared_ptr<callback_holder> self_ref;
+
+    template<typename F>
+    callback_holder(F&& func): f{std::forward<F>(func)} {}
+
+    static void stream_callback(cudaStream_t /*stream*/, cudaError_t status, void* data) {
+        // increase use_cout to 2
+        std::shared_ptr<callback_holder> _this = reinterpret_cast<callback_holder*>(data)->self_ref;
+        // decrease use_count to 1
+        _this->self_ref.reset();
+        _this->f(api_error_type{status});
+        // clean up resources at exit
+    }
+};
+
+} // namespace detail
+
+//api_error_type add_callback(void(cb*)(void*), void* user_data) {
+template<typename F>
+api_error_type add_callback(F&& f) {
+    auto h = std::make_shared<detail::callback_holder>(std::forward<F>(f));
+    // add self-reference to avoid destruction at exit
+    h->self_ref = h;
+    return cudaStreamAddCallback(0, detail::callback_holder::stream_callback, h.get(), 0);
 }
 
 #ifdef __CUDACC__

@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include <arbor/version.hpp>
 #include <arbor/export.hpp>
 #include <arbor/context.hpp>
 #include <arbor/profile/timer.hpp>
@@ -26,6 +27,7 @@ struct profile {
 
     // the accumulated time spent in each region.
     std::vector<double> times;
+    std::vector<double> device_times;
 
     // the number of threads for which profiling information was recorded.
     std::size_t num_threads;
