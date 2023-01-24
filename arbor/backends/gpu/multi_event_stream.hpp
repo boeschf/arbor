@@ -1,47 +1,43 @@
 #pragma once
 
-#include "backends/multi_event_stream.hpp"
+#include "backends/multicore/multi_event_stream.hpp"
 #include "memory/memory.hpp"
 
 namespace arb {
 namespace gpu {
 
-template <typename Event>
-class multi_event_stream : public ::arb::multi_event_stream<Event> {
+class multi_event_stream : public ::arb::multicore::multi_event_stream {
 public:
-    using base = ::arb::multi_event_stream<Event>;
-    using event_data_type = typename base::event_data_type;
-    using state = typename base::state;
-    using size_type = typename base::size_type;
+    using base = ::arb::multicore::multi_event_stream;
 
-    void init(const std::vector<Event>& staged) {
-        base::init(staged);
-        device_ev_data_ = memory::on_gpu(base::ev_data_);
-        device_ev_time_ = memory::on_gpu(base::ev_time_);
-        device_span_begin_ = memory::on_gpu(base::span_begin_);
-        std::vector<size_type> tmp(base::offsets_.begin()+1, base::offsets_.end());
-        device_span_end_ = memory::on_gpu(tmp);
+    using size_type = typename base::size_type;
+    using event_type = typename base::event_type;
+
+    using event_time_type = typename base::event_time_type;
+    using event_data_type = typename base::event_data_type;
+    using event_index_type = typename base::event_index_type;
+
+
+    void init(const std::vector<event_type>& staged, const timestep_range& dts) {
+        base::init(staged, dts);
+        device_ranges_ = memory::make_view(base::ranges_);
+        device_ev_data_ = memory::make_view(base::ev_data_);
     }
 
-    state marked_events() /*const*/ {
+    arb_deliverable_event_stream marked_events() const {
+        if (base::empty()) return {0, nullptr, nullptr};
         return {
-            base::n_streams(),
-            base::n_marked(),
+            base::num_streams_[base::index_],
             device_ev_data_.data(),
-            device_span_begin_.data(),
-            device_span_end_.data(),
-            device_ev_time_.data(),
-            base::t_start_,
-            base::t_end_
+            device_ranges_.data() + base::stream_lookup_[base::index_]
         };
     }
 
 private:
+    memory::device_vector<arb_deliverable_event_range> device_ranges_;
     memory::device_vector<event_data_type> device_ev_data_;
-    memory::device_vector<double> device_ev_time_;
-    memory::device_vector<size_type> device_span_begin_;
-    memory::device_vector<size_type> device_span_end_;
 };
 
 } // namespace gpu
 } // namespace arb
+

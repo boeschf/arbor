@@ -3,6 +3,7 @@
 #include <unordered_set>
 #include <variant>
 #include <vector>
+#include <iostream>
 
 #include <arbor/assert.hpp>
 #include <arbor/common_types.hpp>
@@ -378,17 +379,21 @@ void mc_cell_group::advance(epoch ep, time_type dt, const event_lane_subrange& e
 
     // Bin and collate deliverable events from event lanes.
 
-    PE(advance:eventsetup);
+    PE(advance:eventsetup:add);
     sample_events_.clear();
     for (auto& [mech_index, event_vec] : staged_event_map_) {
         event_vec.clear();
     }
+
+    // Split epoch into equally sized timesteps (last timestep is chosen to match end of epoch)
+    timesteps_.reset(ep, dt);
 
     // Skip event handling if nothing to deliver.
     if (util::sum_by(event_lanes, [] (const auto& l) {return l.size();})) {
         auto lid = 0;
         for (auto& lane: event_lanes) {
             for (auto e: lane) {
+                // Events coinciding with epoch's upper boundary belong to next epoch
                 if (e.time>=ep.t1) break;
                 auto h = target_handles_[target_handle_divisions_[lid]+e.target];
                 staged_event_map_[h.mech_id].emplace_back(e.time, h, e.weight);
@@ -396,11 +401,11 @@ void mc_cell_group::advance(epoch ep, time_type dt, const event_lane_subrange& e
             ++lid;
         }
     }
-    // Sort the events so that processing can be optimised later
+    PL();
+
+    PE(advance:eventsetup:sort);
     for (auto& [mech_id, event_vec] : staged_event_map_) {
-        arb_assert(std::is_sorted(event_vec.begin(), event_vec.end(),
-            [](const auto& a, const auto& b) { return a.time < b.time; }));
-        util::stable_sort_by(event_vec, [](const auto& ev) { return ev.handle.mech_index; });
+        util::stable_sort_by(event_vec, [](const auto& ev) { return event_index(ev); });
     }
     PL();
 
@@ -461,7 +466,7 @@ void mc_cell_group::advance(epoch ep, time_type dt, const event_lane_subrange& e
     PL();
 
     // Run integration and collect samples, spikes.
-    auto result = lowered_->integrate(ep.t1, dt, staged_event_map_, sample_events_);
+    auto result = lowered_->integrate(timesteps_, staged_event_map_, sample_events_);
 
     // For each sampler callback registered in `call_info`, construct the
     // vector of sample entries from the lowered cell sample times and values
