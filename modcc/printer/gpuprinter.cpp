@@ -228,18 +228,17 @@ ARB_LIBMODCC_API std::string emit_gpu_cu_source(const Module& module_, const pri
         out << fmt::format(FMT_COMPILE("__global__\n"
                                        "void apply_events(arb_mechanism_ppack params_, arb_deliverable_event_stream stream) {{\n"
                                        "    PPACK_IFACE_BLOCK;\n"
-                                       "    auto tid_ = threadIdx.x + blockDim.x*blockIdx.x;\n"
-                                       "    const auto n = stream.n_streams;\n"
-                                       "    if (tid_<n) {{\n"
-                                       "        auto begin = stream.events + stream.begin[tid_];\n"
-                                       "        auto end   = stream.events + stream.end[tid_];\n"
-                                       "        for (auto p = begin; p<end; ++p) {{\n"
-                                       "            auto tid_ = p->mech_index;\n"
-                                       "            [[maybe_unused]] auto {0} = p->weight;\n"),
+                                       "    auto ii_ = threadIdx.x + blockDim.x*blockIdx.x;\n"
+                                       "    if (ii_<stream.num_streams) {{\n"
+                                       "        const arb_deliverable_event_range r = stream.ranges[ii_];\n"
+                                       "        const arb_size_type tid_ = r.mech_index;\n"
+                                       "        const arb_deliverable_event_data* __restrict__ const data_ = stream.data;\n"
+                                       "        for (auto i_=r.begin; i_<r.end; ++i_) {{\n"
+                                       "            [[maybe_unused]] auto {0} = (data_+i_)->weight;\n"),
                            net_receive_api->args().empty() ? "weight" : net_receive_api->args().front()->is_argument()->name());
         out << indent << indent << indent;
         emit_api_body_cu(out, net_receive_api, ApiFlags{}.point(is_point_proc).loop(false).iface(false));
-        out << popindent << "}\n" << popindent << "}\n" << popindent << "}\n";
+        out << popindent << "}\n" << popindent << "}\n" << popindent << "}\n\n";
     }
 
     // event delivery
@@ -321,7 +320,9 @@ ARB_LIBMODCC_API std::string emit_gpu_cu_source(const Module& module_, const pri
         if(!net_receive_api->body()->statements().empty()) {
             out << fmt::format(FMT_COMPILE("\n"
                                            "    unsigned block_dim = 128;\n"
-                                           "    unsigned grid_dim = ::arb::gpu::impl::block_count(stream_ptr->n_streams, block_dim);\n"
+                                           "    if (stream_ptr->num_streams == 0u) return;\n"
+                                           "    const arb_size_type num_streams = stream_ptr->num_streams;\n"
+                                           "    unsigned grid_dim = ::arb::gpu::impl::block_count(num_streams, block_dim);\n"
                                            "    {}<<<grid_dim, block_dim>>>(*p, *stream_ptr);\n"),
                                api_name);
         }

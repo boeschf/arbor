@@ -40,10 +40,8 @@ inline cell_local_size_type event_index(const deliverable_event& ev) {
 
 // Delivery data accessor function for multi_event_stream:
 inline arb_deliverable_event_data event_data(const deliverable_event& ev) {
-    return {ev.handle.mech_index, ev.weight};
+    return {ev.weight};
 }
-
-using event_map = std::map<cell_local_size_type, std::vector<deliverable_event>>;
 
 // Sample events (raw values from back-end state).
 
@@ -62,10 +60,5 @@ struct sample_event {
 inline raw_probe_info event_data(const sample_event& ev) {
     return ev.raw;
 }
-
-inline cell_local_size_type event_index(const sample_event& ev) {
-    return 0u;
-}
-
 
 } // namespace arb
