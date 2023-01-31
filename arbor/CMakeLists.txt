@@ -67,6 +67,8 @@ set(arbor_sources
 
 if(ARB_WITH_GPU)
     list(APPEND arbor_sources
+        backends/gpu/multi_event_stream.cpp
+        backends/gpu/multi_event_stream.cu
         backends/gpu/shared_state.cpp
         backends/gpu/stimulus.cu
         backends/gpu/threshold_watcher.cu
