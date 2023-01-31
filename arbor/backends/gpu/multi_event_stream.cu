@@ -52,7 +52,7 @@ void compress(
         arb_size_type count = 0;
         auto* r = ranges_transposed + tid*num_mech_indices;
         for (arb_size_type i = 0; i < num_mech_indices; ++i) {
-            auto* r_next = ranges + i*num_dt;
+            auto* r_next = ranges + tid + i*num_dt;
             if ((r_next->end - r_next->begin)) {
                 *r = *r_next;
                 ++r;
