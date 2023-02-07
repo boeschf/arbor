@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jube>
+    <parameterset name="jobsystem_params">
+        <parameter name="submit_cmd">sbatch</parameter>
+        <parameter name="submit_cmd_args"></parameter>
+        <parameter name="run_cmd">srun</parameter>
+        <parameter name="run_cmd_args">--bcast --wait 5 --unbuffered --cpu-bind=cores --cpu-bind=verbose -m block:block --extra-node-info=2:18:1</parameter>
+        <parameter name="node_idx">0,1,2,3,4</parameter>
+        <parameter name="max_node_idx">4</parameter>
+        <parameter name="nodes" mode="python">[1,2,4,8,16][$node_idx]</parameter>
+    </parameterset>
+
+    <parameterset name="bench_params">
+        <parameter name="num_cells" type="int">2000,4000,8000,16000</parameter>
+        <parameter name="duration" type="int">300</parameter>
+        <parameter name="min_delay" type="int">5</parameter>
+        <parameter name="num_synapses" type="int">2000,4000</parameter>
+    </parameterset>
+</jube>
+
