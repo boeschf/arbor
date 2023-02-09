@@ -17,6 +17,10 @@
 #include <vector>
 #include <unordered_set>
 
+#ifdef ARB_HAVE_TRACY
+#include <tracy/Tracy.hpp>
+#endif
+
 #include <arbor/assert.hpp>
 #include <arbor/common_types.hpp>
 #include <arbor/cable_cell_param.hpp>
@@ -196,6 +200,9 @@ fvm_integration_result fvm_lowered_cell_impl<Backend>::integrate(
     std::vector<deliverable_event> staged_events,
     std::vector<sample_event> staged_samples)
 {
+#ifdef ARB_HAVE_TRACY
+    ZoneScoped;
+#endif
     set_gpu();
 
     // Integration setup
@@ -207,6 +214,10 @@ fvm_integration_result fvm_lowered_cell_impl<Backend>::integrate(
     PL();
 
     while (remaining_steps) {
+#ifdef ARB_HAVE_TRACY
+        ZoneScopedN("step");
+#endif
+
         // Update any required reversal potentials based on ionic concs.
         for (auto& m: revpot_mechanisms_) {
             m->update_current();
@@ -218,6 +229,10 @@ fvm_integration_result fvm_lowered_cell_impl<Backend>::integrate(
 
         // Deliver events and accumulate mechanism current contributions.
 
+#ifdef ARB_HAVE_TRACY
+        {
+        ZoneScopedN("deliver_events");
+#endif
         PE(advance:integrate:events:mark);
         auto deliverable_events = state_->mark_deliverable_events();
         PL();
@@ -225,6 +240,9 @@ fvm_integration_result fvm_lowered_cell_impl<Backend>::integrate(
             m->deliver_events(deliverable_events);
             m->update_current();
         }
+#ifdef ARB_HAVE_TRACY
+        }
+#endif
 
         // Update event list and integration step times.
         PE(advance:integrate:update_time);

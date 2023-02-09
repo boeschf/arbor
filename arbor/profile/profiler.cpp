@@ -2,6 +2,10 @@
 #include <mutex>
 #include <ostream>
 
+#ifdef ARB_HAVE_TRACY
+#include <tracy/TracyC.h>
+#endif
+
 #include <arbor/context.hpp>
 #include <arbor/profile/profiler.hpp>
 
@@ -47,6 +51,9 @@ namespace {
 struct profile_accumulator {
     std::size_t count=0;
     double time=0.;
+#ifdef ARB_HAVE_TRACY
+    TracyCZoneCtx tracy_context;
+#endif
 };
 
 // Records the accumulated time spent in profiler regions on one thread.
@@ -70,7 +77,7 @@ public:
 
     // Start timing the region with index.
     // Throws std::runtime_error if already timing a region.
-    void enter(region_id_type index);
+    void enter(region_id_type index, const char* name);
 
     // Stop timing the current region, and add the time taken to the accumulated time.
     // Throws std::runtime_error if not currently timing a region.
@@ -142,7 +149,7 @@ const std::vector<profile_accumulator>& recorder::accumulators() const {
     return accumulators_;
 }
 
-void recorder::enter(region_id_type index) {
+void recorder::enter(region_id_type index, const char* name) {
     if (index_!=npos) {
         throw std::runtime_error("recorder::enter without matching recorder::leave");
     }
@@ -151,6 +158,10 @@ void recorder::enter(region_id_type index) {
     }
     index_ = index;
     start_time_ = timer_type::tic();
+#ifdef ARB_HAVE_TRACY
+    TracyCZoneN(my_ctx, name, true);
+    accumulators_[index].tracy_context = my_ctx;
+#endif
 }
 
 void recorder::leave() {
@@ -162,6 +173,9 @@ void recorder::leave() {
     }
     accumulators_[index_].count++;
     accumulators_[index_].time += delta;
+#ifdef ARB_HAVE_TRACY
+    TracyCZoneEnd(accumulators_[index_].tracy_context);
+#endif
     index_ = npos;
 }
 
@@ -182,13 +196,13 @@ void profiler::initialize(task_system_handle& ts) {
 
 void profiler::enter(region_id_type index) {
     if (!init_) return;
-    recorders_[thread_ids_.at(std::this_thread::get_id())].enter(index);
+    recorders_[thread_ids_.at(std::this_thread::get_id())].enter(index, region_names_[index].data());
 }
 
 void profiler::enter(const std::string& name) {
     if (!init_) return;
     const auto index = region_index(name);
-    recorders_[thread_ids_.at(std::this_thread::get_id())].enter(index);
+    recorders_[thread_ids_.at(std::this_thread::get_id())].enter(index, region_names_[index].data());
 }
 
 void profiler::leave() {

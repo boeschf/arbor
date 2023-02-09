@@ -80,6 +80,9 @@ option(ARB_WITH_MPI "build with MPI support" OFF)
 
 option(ARB_WITH_PROFILING "use built-in profiling" OFF)
 
+#option(ARB_WITH_TRACY "use tracy" OFF)
+cmake_dependent_option(ARB_WITH_TRACY "Use tracy." ON "ARB_WITH_PROFILING" OFF)
+
 option(ARB_WITH_ASSERTIONS "enable arb_assert() assertions in code" OFF)
 
 #----------------------------------------------------------
@@ -101,9 +104,9 @@ include(ErrorTarget)  # reguired for add_error_target
 # Set release as the default build type (CMake default is debug.)
 
 if (NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE release CACHE STRING "Choose the type of build." FORCE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build." FORCE)
     # Set the possible values of build type for cmake-gui
-    set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "debug" "release")
+    set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "RelWithDebInfo" "MinSizeRel")
 endif()
 
 # Add CUDA as a language if GPU support requested. (This has to be set early so
@@ -285,6 +288,10 @@ if(ARB_WITH_PROFILING)
 endif()
 if(ARB_WITH_ASSERTIONS)
     target_compile_definitions(arbor-config-defs INTERFACE ARB_HAVE_ASSERTIONS)
+endif()
+if(ARB_WITH_TRACY)
+    target_compile_definitions(arbor-config-defs INTERFACE ARB_HAVE_TRACY)
+    target_compile_definitions(arbor-private-deps INTERFACE TRACY_ENABLE)
 endif()
 
 # Python bindings
