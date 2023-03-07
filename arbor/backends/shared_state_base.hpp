@@ -5,7 +5,6 @@
 
 #include "backends/event.hpp"
 #include "backends/common_types.hpp"
-#include "event_map.hpp"
 #include "fvm_layout.hpp"
 
 #include "util/rangeutil.hpp"
@@ -18,7 +17,7 @@ struct shared_state_base {
 
     void update_time_to(const timestep_range::timestep& ts) {
         auto d = static_cast<D*>(this);
-        d->time_to = ts.t1();
+        d->time_to = ts.t_end();
         d->dt = ts.dt();
     }
 
@@ -27,25 +26,25 @@ struct shared_state_base {
         d->time = d->time_to;
     }
 
-    void begin_epoch(const event_map& deliverables,
-                     const std::vector<sample_event>& samples,
+    void begin_epoch(const std::vector<std::vector<std::vector<deliverable_event>>>& staged_events_per_mech_id,
+                     const std::vector<std::vector<sample_event>>& samples,
                      const timestep_range& dts) {
         auto d = static_cast<D*>(this);
         // events
         auto& storage = d->storage;
         for (auto& [mech_id, store] : storage) {
-            if (auto it = deliverables.find(mech_id);
-                it != deliverables.end() && it->second.size()) {
-                store.deliverable_events_.init(it->second, dts);
+            if (mech_id < staged_events_per_mech_id.size() && staged_events_per_mech_id[mech_id].size())
+            {
+                store.deliverable_events_.init(staged_events_per_mech_id[mech_id]);
             }
         }
         // samples
-        auto n_samples = samples.size();
+        auto n_samples = util::sum_by(samples, [] (const auto& s) {return s.size();});
         if (d->sample_time.size() < n_samples) {
             d->sample_time = array(n_samples);
             d->sample_value = array(n_samples);
         }
-        d->sample_events.init(samples, dts);
+        d->sample_events.init(samples);
         // thresholds
         d->watcher.clear_crossings();
     }
@@ -86,8 +85,9 @@ struct shared_state_base {
         auto& storage = d->storage;
         if (auto it = storage.find(m.mechanism_id()); it != storage.end()) {
             auto& deliverable_events = it->second.deliverable_events_;
-            if (auto es_state = deliverable_events.marked_events(); es_state.num_streams > 0u) {
-                m.deliver_events(es_state);
+            if (!deliverable_events.empty()) {
+                auto state = deliverable_events.marked_events();
+                m.deliver_events(state);
             }
         }
     }

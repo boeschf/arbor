@@ -3,7 +3,6 @@
 #include <unordered_set>
 #include <variant>
 #include <vector>
-#include <iostream>
 
 #include <arbor/assert.hpp>
 #include <arbor/common_types.hpp>
@@ -41,6 +40,12 @@ mc_cell_group::mc_cell_group(const std::vector<cell_gid_type>& gids,
 
     // Construct cell implementation, retrieving handles and maps.
     auto fvm_info = lowered_->initialize(gids_, rec);
+
+    for (auto [mech_id, n_targets] : fvm_info.num_targets_per_mech_id) {
+        if (n_targets > 0u && mech_id >= staged_events_per_mech_id_.size()) {
+            staged_events_per_mech_id_.resize(mech_id+1);
+        }
+    }
 
     // Propagate source and target ranges to the simulator object
     cg_sources = std::move(fvm_info.source_data);
@@ -377,22 +382,38 @@ void mc_cell_group::advance(epoch ep, time_type dt, const event_lane_subrange& e
 
     // Bin and collate deliverable events from event lanes.
 
-    PE(advance:eventsetup);
-    sample_events_.clear();
-    staged_event_map_.clear();
-
+    PE(advance:eventsetup:clear);
     // Split epoch into equally sized timesteps (last timestep is chosen to match end of epoch)
     timesteps_.reset(ep, dt);
+    for (auto& vv : staged_events_per_mech_id_) {
+        vv.resize(timesteps_.size());
+        for (auto& v : vv) {
+            v.clear();
+        }
+    }
+    sample_events_.resize(timesteps_.size());
+    for (auto& v : sample_events_) {
+        v.clear();
+    }
+    PL();
 
     // Skip event handling if nothing to deliver.
+    PE(advance:eventsetup:push);
     if (util::sum_by(event_lanes, [] (const auto& l) {return l.size();})) {
         auto lid = 0;
         for (auto& lane: event_lanes) {
+            arb_size_type timestep_index = 0;
             for (auto e: lane) {
                 // Events coinciding with epoch's upper boundary belong to next epoch
-                if (e.time>=ep.t1) break;
-                auto h = target_handles_[target_handle_divisions_[lid]+e.target];
-                add_event(staged_event_map_, e.time, h, e.weight);
+                const auto time = e.time;
+                if (time >= ep.t1) break;
+                while(time >= timesteps_[timestep_index].t_end()) {
+                    ++timestep_index;
+                }
+                arb_assert(timestep_index < timesteps_.size());
+                const auto offset = target_handle_divisions_[lid]+e.target;
+                const auto h = target_handles_[offset];
+                staged_events_per_mech_id_[h.mech_id][timestep_index].emplace_back(e.time, h, e.weight);
             }
             ++lid;
         }
@@ -418,31 +439,34 @@ void mc_cell_group::advance(epoch ep, time_type dt, const event_lane_subrange& e
     sample_size_type n_samples = 0;
     sample_size_type max_samples_per_call = 0;
 
-    {
+    if (!sampler_map_.empty()) { // NOTE: We avoid the lock here as often as possible
+        // SAFETY: We need the lock here, as _schedule_ is not reentrant.
         std::lock_guard<std::mutex> guard(sampler_mex_);
-
-        for (auto& sm_entry: sampler_map_) {
-            // Ignore sampler_association_handle, just need the association itself.
-            sampler_association& sa = sm_entry.second;
-
+        for (auto& [sk, sa]: sampler_map_) {
+            if (sa.probeset_ids.empty()) continue; // No need to make any schedule
             auto sample_times = util::make_range(sa.sched.events(tstart, ep.t1));
-            if (sample_times.empty()) {
-                continue;
-            }
-
             sample_size_type n_times = sample_times.size();
+            if (n_times == 0) continue;
             max_samples_per_call = std::max(max_samples_per_call, n_times);
-
-            for (cell_member_type pid: sa.probeset_ids) {
+            for (const cell_member_type& pid: sa.probeset_ids) {
                 probe_tag tag = probe_map_.tag.at(pid);
                 unsigned index = 0;
                 for (const fvm_probe_data& pdata: probe_map_.data_on(pid)) {
-                    call_info.push_back({sa.sampler, pid, tag, index++, &pdata, n_samples, n_samples + n_times*pdata.n_raw()});
-
+                    call_info.push_back({sa.sampler,
+                                         pid,
+                                         tag,
+                                         index,
+                                         &pdata,
+                                         n_samples,
+                                         n_samples + n_times*pdata.n_raw()});
+                    index++;
                     for (auto t: sample_times) {
+                        auto it = timesteps_.find(t);
+                        arb_assert(it != timesteps_.end());
+                        const auto timestep_index = it - timesteps_.begin();
                         for (probe_handle h: pdata.raw_handle_range()) {
                             sample_event ev{t, {h, n_samples++}};
-                            sample_events_.push_back(ev);
+                            sample_events_[timestep_index].push_back(ev);
                         }
                     }
                 }
@@ -450,13 +474,10 @@ void mc_cell_group::advance(epoch ep, time_type dt, const event_lane_subrange& e
             arb_assert(n_samples==call_info.back().end_offset);
         }
     }
-
-    // Sample events must be ordered by time for the lowered cell.
-    util::stable_sort_by(sample_events_, [](const sample_event& ev) { return event_time(ev); });
     PL();
 
     // Run integration and collect samples, spikes.
-    auto result = lowered_->integrate(timesteps_, staged_event_map_, sample_events_);
+    auto result = lowered_->integrate(timesteps_, staged_events_per_mech_id_, sample_events_);
 
     // For each sampler callback registered in `call_info`, construct the
     // vector of sample entries from the lowered cell sample times and values
@@ -480,7 +501,7 @@ void mc_cell_group::advance(epoch ep, time_type dt, const event_lane_subrange& e
     // global index for spike communication.
 
     for (auto c: result.crossings) {
-        spikes_.push_back({spike_sources_[c.index], time_type(c.time)});
+        spikes_.emplace_back(spike_sources_[c.index], time_type(c.time));
     }
 }
 

@@ -1,7 +1,7 @@
 #pragma once
 
-#include <stdexcept>
 #include <sstream>
+#include <stdexcept>
 
 #include "gpu_api.hpp"
 
@@ -34,10 +34,10 @@ constexpr inline unsigned block_count(unsigned n, unsigned block_size) {
 }
 
 inline void device_error(const api_error_type& api_error, const char func[], const char file[], int line) {
-    std::ostringstream s;
-    s << "device error: \"" << api_error.description() << "\" " << "[" << api_error.name() << "] "
-      << "in function: " << func << ", " << "location: " << file << ":" << line;
-    throw std::runtime_error(s.str());
+    std::ostringstream o;
+    o << "device error: \"" << api_error.description() << "\" [" << api_error.name() << "]"
+      << " in function: " << func << ", location: " << file << ":" << line;
+    throw std::runtime_error(o.str());
 }
 
 } // namespace impl
@@ -57,6 +57,11 @@ void launch(const dim3& blocks, const dim3& threads, Kernel kernel, Args&&... ar
 #ifndef NDEBUG
     ARB_GPU_CHECK(device_synchronize());
 #endif
+}
+
+template<typename Kernel, typename... Args>
+void launch_1d(unsigned elements, unsigned block_size, Kernel kernel, Args&&... args) {
+    launch(impl::block_count(elements, block_size), block_size, kernel, std::forward<Args>(args)...);
 }
 
 } // namespace gpu

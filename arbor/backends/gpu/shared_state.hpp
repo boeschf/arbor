@@ -11,6 +11,8 @@
 #include "fvm_layout.hpp"
 #include "timestep_range.hpp"
 
+#include "threading/threading.hpp"
+
 #include "backends/common_types.hpp"
 #include "backends/shared_state_base.hpp"
 #include "backends/gpu/rand.hpp"
@@ -105,7 +107,7 @@ struct ARB_ARBOR_API istim_state {
     void reset();
 
     // Contribute to current density:
-    void add_current(const arb_value_type& time, array& current_density);
+    void add_current(const arb_value_type time, array& current_density);
 
     // Number of stimuli:
     std::size_t size() const;
@@ -118,6 +120,9 @@ struct ARB_ARBOR_API istim_state {
 
 struct ARB_ARBOR_API shared_state: shared_state_base<shared_state, array, ion_state> {
     struct mech_storage {
+        mech_storage() = default;
+        mech_storage(task_system_handle tp) : deliverable_events_(tp) {}
+
         array data_;
         iarray indices_;
         std::vector<arb_value_type>  globals_;
@@ -130,6 +135,8 @@ struct ARB_ARBOR_API shared_state: shared_state_base<shared_state, array, ion_st
         random_numbers random_numbers_;
         deliverable_event_stream deliverable_events_;
     };
+
+    task_system_handle thread_pool;
 
     using cable_solver = arb::gpu::matrix_state_fine<arb_value_type, arb_index_type>;
     cable_solver solver;
@@ -172,14 +179,15 @@ struct ARB_ARBOR_API shared_state: shared_state_base<shared_state, array, ion_st
 
     shared_state() = default;
 
-    shared_state(arb_size_type n_cell,
+    shared_state(task_system_handle tp,
+                 arb_size_type n_cell,
                  arb_size_type n_cv,
                  const std::vector<arb_index_type>& cv_to_cell_vec,
                  const std::vector<arb_value_type>& init_membrane_potential,
                  const std::vector<arb_value_type>& temperature_K,
                  const std::vector<arb_value_type>& diam,
                  const std::vector<arb_index_type>& src_to_spike,
-                 const fvm_detector_info& detector_info,
+                 const fvm_detector_info& detector,
                  unsigned, // align parameter ignored
                  arb_seed_type cbprng_seed_ = 0u);
 

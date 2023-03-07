@@ -59,8 +59,8 @@ public:
 
     fvm_integration_result integrate(
         const timestep_range& dts,
-        const event_map& staged_event_map,
-        const std::vector<sample_event>& staged_samples) override;
+        const std::vector<std::vector<std::vector<deliverable_event>>>& staged_events_per_mech_id,
+        const std::vector<std::vector<sample_event>>& staged_samples) override;
 
     value_type time() const override { return state_->time; }
 
@@ -158,22 +158,22 @@ void fvm_lowered_cell_impl<Backend>::reset() {
 template <typename Backend>
 fvm_integration_result fvm_lowered_cell_impl<Backend>::integrate(
     const timestep_range& dts,
-    const event_map& staged_event_map,
-    const std::vector<sample_event>& staged_samples)
+    const std::vector<std::vector<std::vector<deliverable_event>>>& staged_events_per_mech_id,
+    const std::vector<std::vector<sample_event>>& staged_samples)
 {
-    arb_assert(state_->time == dts.t0());
+    arb_assert(state_->time == dts.t_begin());
     set_gpu();
 
     // Integration setup
     PE(advance:integrate:setup);
     // Push samples and events down to the state and reset the spike thresholds.
-    state_->begin_epoch(staged_event_map, staged_samples, dts);
+    state_->begin_epoch(staged_events_per_mech_id, staged_samples, dts);
     PL();
 
     // loop over timesteps
-    for (auto ts : dts) {
+    for (const auto& ts : dts) {
         state_->update_time_to(ts);
-        arb_assert(state_->time == ts.t0());
+        arb_assert(state_->time == ts.t_begin());
 
         // Update integration step time information visible to mechanisms.
         for (auto& m: mechanisms_) {
@@ -199,7 +199,6 @@ fvm_integration_result fvm_lowered_cell_impl<Backend>::integrate(
 
         // Mark all events due before (but not including) the end of this time step (state_->time_to) for delivery
         state_->mark_events();
-
         for (auto& m: mechanisms_) {
             // apply the events and drop them afterwards
             state_->deliver_events(*m);
@@ -257,7 +256,7 @@ fvm_integration_result fvm_lowered_cell_impl<Backend>::integrate(
         }
         PL();
 
-        // Advance epoch by swapping current and next time.
+        // Advance epoch
         state_->next_time_step();
 
         // Check for non-physical solutions:
@@ -440,7 +439,8 @@ fvm_initialization_data fvm_lowered_cell_impl<Backend>::initialize(
 
     auto d_info = get_detector_info(max_detector, ncell, cells, D, context_);
     const auto ncv = D.size();
-    state_ = std::make_unique<shared_state>(ncell,
+    state_ = std::make_unique<shared_state>(context_.thread_pool,
+                                            ncell,
                                             ncv,
                                             std::move(cv_to_cell),
                                             D.init_membrane_potential,
@@ -526,6 +526,7 @@ fvm_initialization_data fvm_lowered_cell_impl<Backend>::initialize(
                     }
                 }
             }
+            fvm_info.num_targets_per_mech_id[mech_id] = config.target.size();
             break;
         case arb_mechanism_kind_gap_junction:
             // Junction mechanism contributions are in [nA] (µS * mV); CV area A in [µm^2].

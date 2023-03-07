@@ -1,8 +1,9 @@
 #include <vector>
 #include <gtest/gtest.h>
 
+#include "timestep_range.hpp"
 #include "backends/event.hpp"
-#include "backends/multicore/multi_event_stream.hpp"
+#include "backends/multicore/event_stream.hpp"
 #include "util/rangeutil.hpp"
 
 using namespace arb;
@@ -33,91 +34,79 @@ namespace {
     }
 }
 
-TEST(multi_event_stream, mark) {
-    using multi_event_stream = multicore::multi_event_stream;
+TEST(event_stream, mark) {
+    using event_stream = multicore::event_stream<deliverable_event>;
 
-    multi_event_stream m;
-
-    ASSERT_TRUE(std::is_sorted(common_events.begin(), common_events.end(),
-        [](const auto& a, const auto& b) { return event_time(a) < event_time(b);}));
+    event_stream m;
 
     arb_deliverable_event_stream s;
-    arb_deliverable_event_range r;
-    event_map em;
 
     timestep_range dts{0, 6, 1.0};
     EXPECT_EQ(dts.size(), 6u);
 
-    for (const auto& e : common_events) add_event(em, e);
+    std::vector<std::vector<deliverable_event>> events(dts.size());
+    for (const auto& ev : common_events) {
+        events[dts.find(event_time(ev))-dts.begin()].push_back(ev);
+    }
+    arb_assert(util::sum_by(events, [] (const auto& v) {return v.size();}) == common_events.size());
 
-    m.init(em[mech], dts);
+    m.init(events);
 
     EXPECT_TRUE(m.empty());
     s = m.marked_events();
-    EXPECT_EQ(s.num_streams, 0u);
+    EXPECT_EQ(s.end - s.begin, 0u);
 
     m.mark();
     // current time is 0: no events
     EXPECT_TRUE(m.empty());
     s = m.marked_events();
-    EXPECT_EQ(s.num_streams, 0u);
+    EXPECT_EQ(s.end - s.begin, 0u);
 
     m.mark();
     // current time is 1: no events
     EXPECT_TRUE(m.empty());
     s = m.marked_events();
-    EXPECT_EQ(s.num_streams, 0u);
+    EXPECT_EQ(s.end - s.begin, 0u);
 
     m.mark();
     // current time is 2: 1 event at mech_index 1
     EXPECT_FALSE(m.empty());
     s = m.marked_events();
-    EXPECT_EQ(s.num_streams, 1u);
-    r = s.ranges[0];
-    EXPECT_EQ(r.mech_index, 1u);
-    EXPECT_EQ(r.end - r.begin, 1u);
-    EXPECT_TRUE(event_matches(s.data[r.begin], 0u));
+    EXPECT_EQ(s.end - s.begin, 1u);
+    EXPECT_TRUE(event_matches(s.begin[0], 0u));
 
     m.mark();
     // current time is 3: 2 events at mech_index 0 and 2
     EXPECT_FALSE(m.empty());
     s = m.marked_events();
-    EXPECT_EQ(s.num_streams, 2u);
-    r = s.ranges[0];
-    EXPECT_EQ(r.mech_index, 0u);
-    EXPECT_EQ(r.end - r.begin, 1u);
-    EXPECT_TRUE(event_matches(s.data[r.begin], 2u));
-    r = s.ranges[1];
-    EXPECT_EQ(r.mech_index, 2u);
-    EXPECT_EQ(r.end - r.begin, 1u);
-    EXPECT_TRUE(event_matches(s.data[r.begin], 1u));
+    EXPECT_EQ(s.end - s.begin, 2u);
+    // the order of these 2 events will be inverted on GPU due to sorting
+    EXPECT_TRUE(event_matches(s.begin[0], 1u));
+    EXPECT_TRUE(event_matches(s.begin[1], 2u));
 
     m.mark();
     // current time is 4: no events
     EXPECT_TRUE(m.empty());
     s = m.marked_events();
-    EXPECT_EQ(s.num_streams, 0u);
+    EXPECT_EQ(s.end - s.begin, 0u);
 
     m.mark();
     // current time is 5: 2 events at mech_index 4
     EXPECT_FALSE(m.empty());
     s = m.marked_events();
-    EXPECT_EQ(s.num_streams, 1u);
-    r = s.ranges[0];
-    EXPECT_EQ(r.mech_index, 4u);
-    EXPECT_EQ(r.end - r.begin, 2u);
-    EXPECT_TRUE(event_matches(s.data[r.begin+0u], 3u));
-    EXPECT_TRUE(event_matches(s.data[r.begin+1u], 4u));
+    EXPECT_EQ(s.end - s.begin, 2u);
+    EXPECT_TRUE(event_matches(s.begin[0], 3u));
+    EXPECT_TRUE(event_matches(s.begin[1], 4u));
 
     m.mark();
     // current time is past time range
     EXPECT_TRUE(m.empty());
     s = m.marked_events();
-    EXPECT_EQ(s.num_streams, 0u);
+    EXPECT_EQ(s.end - s.begin, 0u);
 
     m.clear();
     // no events after clear
     EXPECT_TRUE(m.empty());
     s = m.marked_events();
-    EXPECT_EQ(s.num_streams, 0u);
+    EXPECT_EQ(s.end - s.begin, 0u);
 }

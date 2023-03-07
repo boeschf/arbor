@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <iosfwd>
 #include <limits>
-#include <vector>
+
+#include <arbor/assert.hpp>
+#include <util/iterutil.hpp>
 
 #include "epoch.hpp"
 
@@ -11,29 +13,59 @@ namespace arb {
 
 // A timestep_range splits the time interval between t0 and t1 into equally sized timesteps of
 // length dt. The last timestep is adjusted to match t1 and is either shorter or minimally longer
-// than the specified dt (max length = (1+1e-8)*dt). The range can be iterated over and the
-// iterators point to objects of type `timestep` which can be queried for start and end times, as
-// well as dt and midpoint.
-
+// than the specified dt. The range can be iterated over and the iterators derefernce to objects of
+// type `timestep` which can be queried for start and end times, as well as dt and midpoint.
 class timestep_range {
-public:
+public: // member types
+    // Representation of a time step
     struct timestep {
         time_type t0_;
         time_type t1_;
-        time_type t0() const noexcept { return t0_; }
-        time_type t1() const noexcept { return t1_; }
+        time_type t_begin() const noexcept { return t0_; }
+        time_type t_end() const noexcept { return t1_; }
         time_type dt() const noexcept { return t1_ - t0_; }
         time_type midpoint() const noexcept { return t0_ + 0.5*dt(); }
     };
 
-    using vec = std::vector<timestep>;
-    using value_type = vec::value_type;
-    using const_iterator = vec::const_iterator;
-    using size_type = vec::size_type;
+    using value_type = timestep;
+    using size_type = unsigned;
 
-    static constexpr size_type npos = std::numeric_limits<size_type>::max();
+private: // members
+    time_type t0_;
+    time_type t1_;
+    time_type dt_;
+    size_type n_;
 
-public:
+public: // access
+    timestep operator[](size_type i) const noexcept {
+        arb_assert(i < n_);
+        return { t0_+ i*dt_, i+1 >= n_ ? t1_ : t0_ + (i+1)*dt_};
+    }
+
+public: // iterator
+    class const_iterator:
+        public util::generating_view_iterator_adaptor<const_iterator, timestep_range> {
+    private:
+        using base = util::generating_view_iterator_adaptor<const_iterator, timestep_range>;
+        friend class timestep_range;
+
+        const timestep_range * r_ = nullptr;
+
+    public: // ctor, assignment
+        const_iterator() noexcept = default;
+        const_iterator(const const_iterator&) noexcept = default;
+        const_iterator& operator=(const const_iterator&) noexcept = default;
+
+        const timestep_range& view() const noexcept {
+            arb_assert(r_);
+            return *r_;
+        }
+
+    private:
+        const_iterator(const timestep_range* r, std::size_t i) noexcept : base(i), r_{r} {}
+    };
+
+public: // ctors, assignment, reset
     timestep_range() noexcept { reset(); }
     timestep_range(time_type t1, time_type dt) { reset(t1, dt); }
     timestep_range(const epoch& ep, time_type dt) { reset(ep, dt); }
@@ -46,11 +78,7 @@ public:
     timestep_range& operator=(const timestep_range&) = default;
 
     timestep_range& reset() noexcept {
-        t0_ = 0;
-        t1_ = 0;
-        dt_ = 1;
-        data_.clear();
-        return *this;
+        return reset(0, 0, 1);
     }
 
     timestep_range& reset(time_type t1, time_type dt) {
@@ -62,40 +90,37 @@ public:
     }
 
     timestep_range& reset(time_type t0, time_type t1, time_type dt) {
-        data_.clear();
         t0_ = t0;
         t1_ = t1;
         dt = dt < 0 ? (t1-t0) : dt;
         dt_ = std::max(std::numeric_limits<time_type>::min(), dt);
         const time_type delta = (t1<=t0)? 0: t1-t0;
         const size_type m = static_cast<size_type>(delta/dt_);
-        const size_type n = m*dt_ + 1e-8*dt_ >= delta ? m : m + 1;
-        data_.reserve(n);
-        for(std::size_t i=0; i<n; ++i) {
-            data_.push_back(timestep{t0_ + i*dt_, t0_ + (i+1)*dt_});
-        }
-        if (!empty()) data_.back().t1_ = t1_;
+        // Allow slightly larger time steps at the end of the epoch in order to avoid tiny time
+        // steps, if the the last time step m*dt_ is at most m floating point representations
+        // smaller than t1_. The tolerable floating point range is approximated by the scaled
+        // machine epsilon times m.
+        n_ = m*dt_ + std::numeric_limits<time_type>::epsilon()*t1_*m >= delta ? m : m + 1;
         return *this;
     }
 
-    time_type t0() const noexcept { return t0_; }
-    time_type t1() const noexcept { return t1_; }
+public: // access and queries
+    time_type t_begin() const noexcept { return t0_; }
+    time_type t_end() const noexcept { return t1_; }
 
-    bool empty() const noexcept { return data_.empty(); }
-    size_type size() const noexcept { return data_.size(); }
+    bool empty() const noexcept { return !n_; }
+    size_type size() const noexcept { return n_; }
 
-    const_iterator begin() const noexcept { return data_.cbegin(); }
-    const_iterator end() const noexcept { return data_.cend(); }
+    const_iterator begin() const noexcept { return {this, 0u}; }
+    const_iterator end() const noexcept { return {this, n_}; }
 
-    timestep operator[](size_type i) const noexcept { return data_[i]; }
-
-    size_type index(time_type t) const noexcept {
-        if (empty() || t<t0_ || t>=t1_) return npos;
-        const auto idx = static_cast<size_type>((t-t0_)/dt_);
-        // check if really in interval to rule out roundoff errors
-        if (t>= data_[idx].t0() && t < data_[idx].t1()) return idx;
-        else if (t < data_[idx].t0()) return idx-1;
-        else return idx+1;
+    const_iterator find(time_type t) const noexcept {
+        if (!n_ || t < t0_ || t >= t1_) return end();
+        const auto n = std::min((size_type)((t-t0_)/dt_), n_-1);
+        const auto [t0,t1] = this->operator[](n);
+        if (t>=t0 && t<t1) return {this, n};
+        else if (t<t0) return {this, n-1};
+        else return {this, n+1};
     }
 
     template<class CharT, class Traits = std::char_traits<CharT>>
@@ -103,17 +128,11 @@ public:
         const timestep_range& r) {
         out << "{";
         for (const auto& x : r) {
-            out << " [ " << x.t0() << ", " << x.t1() << " ]";
+            out << " [ " << x.t_begin() << ", " << x.t_end() << " ),";
         }
         out << " }\n";
         return out;
     }
-
-private:
-    time_type t0_;
-    time_type t1_;
-    time_type dt_;
-    vec data_;
 };
 
 } // namespace arb
