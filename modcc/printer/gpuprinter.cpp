@@ -293,11 +293,13 @@ ARB_LIBMODCC_API std::string emit_gpu_cu_source(const Module& module_, const pri
                                            "    unsigned block_dim = 128;\n"
                                            "    unsigned grid_dim = ::arb::gpu::impl::block_count(n, block_dim);\n"
                                            "    ::arb::gpu::launch(grid_dim, block_dim, {1}, *p);\n"
-                                           "    if (!p->multiplicity) return;\n"
-                                           "    ::arb::gpu::launch({{grid_dim, {2}}}, block_dim, multiply, *p);\n"),
+                                           "    if (!p->multiplicity) return;\n"),
                                "width",
-                               api_name,
-                               n);
+                               api_name);
+            // only multiply if we actually have arrays
+            if (n) {
+                out << fmt::format(FMT_COMPILE("    ::arb::gpu::launch({{grid_dim, {}}}, block_dim, multiply, *p);\n"), n);
+            }
         }
         out << "}\n\n";
     }
@@ -317,9 +319,7 @@ ARB_LIBMODCC_API std::string emit_gpu_cu_source(const Module& module_, const pri
             out << fmt::format(FMT_COMPILE("\n"
                                            "    const arb_deliverable_event_data* const begin = stream_ptr->begin;\n"
                                            "    const arb_deliverable_event_data* const end = stream_ptr->end;\n"
-                                           "    const auto n = end - begin;\n"
-                                           "    if (!n) return;\n"
-                                           "    ::arb::gpu::launch_1d(n, 128, {}, *p, begin, end);\n"),
+                                           "    ::arb::gpu::launch_1d(end - begin, 128, {}, *p, begin, end);\n"),
                                api_name);
         }
         out << "}\n\n";
