@@ -1,0 +1,8 @@
+{
+    "name": "ring",
+    "num-cells": #NUM_CELLS#,
+    "duration": #DURATION#,
+    "min-delay": #MIN_DELAY#, 
+    "depth": 5,
+    "synapses": #NUM_SYNAPSES#
+}

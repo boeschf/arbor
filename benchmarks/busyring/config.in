@@ -1,0 +1,29 @@
+{
+    "name": "busy_ring",
+    "num-cells": #NUM_CELLS#,
+    "ring-size": #RING_SIZE#,
+    "duration": #DURATION#,
+    "dt": #DT#,
+    "min-delay": #MIN_DELAY#, 
+    "event-weight": 0.5,
+    "event-freq": 0.2,
+    "record": false,
+    "spikes": false,
+    "complex": true,
+    "depth": 5,
+    "branch-probs": [
+        1,
+        0.5
+    ],
+    "compartments": [
+        20,
+        2
+    ],
+    "lengths": [
+        200,
+        20
+    ],
+    "synapses": #NUM_SYNAPSES#,
+    "bind-threads": true,
+    "prefer-gpu": true
+}

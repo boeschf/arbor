@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jube>
+    <!-- tags indicate the platform: run this script as follows                                  -->
+    <!-- jube run bench.xml -t <tag>                                                             -->
+    <include-path>
+        <path tag="local">platforms/local</path>
+        <path tag="daint_gpu">platforms/daint_gpu</path>
+        <path tag="daint_mc">platforms/daint_gpu</path>
+    </include-path>
+
+    <!-- platform names                                                                          -->
+    <parameterset name="platforms">
+        <parameter name="platform" tag="local">local</parameter>
+        <parameter name="platform" tag="daint_gpu">daint_gpu</parameter>
+        <parameter name="platform" tag="daint_mc">daint_mc</parameter>
+    </parameterset>
+
+    <!-- main benchmark                                                                          -->
+    <benchmark name="busyring" outpath="@OUT_DIR@">
+        <comment>Arbor busyring benchmark run</comment>
+
+        <!-- benchmark parameters, may vary depending on platform                                -->
+        <parameterset name="bench_params" init_with="run.xml:bench_params">
+        </parameterset>
+
+        <!-- copy executable, job file and config file templates                                 -->
+        <fileset name="copy_files">
+            <copy>$jube_benchmark_home/busyring</copy>
+            <copy>$jube_benchmark_home/platforms/${platform}/job.in</copy>
+            <copy>$jube_benchmark_home/config.in</copy>
+        </fileset>
+
+        <!-- rules for substituting templates within jobfile                                     -->
+        <substituteset name="sub_jobfiles">
+            <sub source="#BENCHNAME#" dest="$shared_job_name" />
+            <sub source="#NODES#" dest="$nodes" />
+            <iofile in="job.in" out="job" />
+        </substituteset>
+
+        <!-- rules for substituting templates within config file                                 -->
+        <substituteset name="sub_configs">
+            <sub source="#NUM_CELLS#" dest="$num_cells" />
+            <sub source="#RING_SIZE#" dest="$ring_size" />
+            <sub source="#DURATION#" dest="$duration" />
+            <sub source="#DT#" dest="$dt" />
+            <sub source="#MIN_DELAY#" dest="$min_delay" />
+            <sub source="#NUM_SYNAPSES#" dest="$num_synapses" />
+            <iofile in="config.in" out="config" />
+        </substituteset>
+
+        <!-- important path and file names                                                       -->
+        <parameterset name="paths">
+            <parameter name="shared_dir">
+                ${jube_wp_abspath}/../bench_run_${jube_benchmark_id}_${jube_step_name}
+            </parameter>
+            <parameter name="job_template">${jube_wp_abspath}/job</parameter>
+            <parameter name="shared_job_name">job_${jube_wp_iteration}_${node_idx}</parameter>
+            <parameter name="shared_job">${shared_dir}/${shared_job_name}</parameter>
+            <parameter name="outlogfile">${jube_wp_abspath}/job.out</parameter>
+            <parameter name="errlogfile">${jube_wp_abspath}/job.err</parameter>
+            <parameter name="out_work_dir">
+                ${jube_benchmark_rundir}/${jube_wp_padid}_${jube_step_name}/work
+            </parameter>
+            <parameter name="out_shared_dir">
+                ${jube_benchmark_rundir}/${jube_step_name}_shared
+            </parameter>
+            <parameter name="max_iteration" mode="python" type="int">
+                ${jube_step_iterations}-1
+            </parameter>
+            <parameter name="config_file">${jube_wp_abspath}/config</parameter>
+            <parameter name="executable">${jube_wp_abspath}/busyring</parameter>
+        </parameterset>
+
+        <!-- launch the benchmarks                                                               -->
+        <!-- The benchmarks will be grouped into different jobs according to node count and      -->
+        <!-- iteration index. Thus, we combine all benchmark variants with the same node count   -->
+        <!-- into one single job to avoid wait and startup times on congested systems.           -->
+        <!-- Furthermore, each iteration is run as a separate job. This helps to exclude         -->
+        <!-- outliers from the statistics if by chance a certain node allocation turns out to be -->
+        <!-- slow for any reason.                                                                -->
+        <step name="run" iterations="10" shared="shared"
+            work_dir="@WORK_DIR@/bench_run_${jube_benchmark_id}_${jube_wp_id}">
+            <use>platforms</use>                       <!-- platform name                        -->
+            <use from="run.xml">jobsystem_params</use> <!-- submit commands etc                  -->
+            <use>bench_params</use>                    <!-- benchmark parameters                 -->
+            <use>copy_files</use>                      <!-- copy template files                  -->
+            <use>sub_jobfiles</use>                    <!-- configure job files                  -->
+            <use>sub_configs</use>                     <!-- configure config files               -->
+            <use>paths</use>                           <!-- load paths                           -->
+
+            <!-- parallel: make shared directory and add a job file for each step iteration and  -->
+            <!-- each node count                                                                 -->
+            <do>mkdir -p ${shared_dir}</do>
+            <do>cp ${job_template} ${shared_job}</do> 
+
+            <!-- serial: wait for all workpackages to finish                                     -->
+            <do shared="true">echo "barrier"</do>
+
+            <!-- parallel: each work package amends respective job file with instructions on how -->
+            <!-- to exectue the benchmark                                                        -->
+            <do>echo cd $jube_wp_abspath >> ${shared_job} </do>
+            <do>echo "${run_cmd} ${run_cmd_args} ${executable} ${config_file} >${outlogfile} 2>${errlogfile}" >> ${shared_job}</do>
+            <do>echo "touch done" >> ${shared_job}</do>
+            <do>echo "" >> ${shared_job}</do>
+
+            <!-- serial: copy the job files to the output directory and start the benchmarks     -->
+            <do shared="true">for n in {0..${max_node_idx}}; do for i in {0..${max_iteration}}; do cp "${shared_dir}/job_$${i}_$${n}" ${out_shared_dir}; done; done</do>
+            <do shared="true">cd ${shared_dir}; for n in {0..${max_node_idx}}; do for i in {0..${max_iteration}}; do ${submit_cmd} ${submit_cmd_args} "${shared_dir}/job_$${i}_$${n}"; done; done</do>
+
+            <!-- parallel: wait for benchmark to finish, then copy results to output directory   -->
+            <do done_file="done"></do>
+            <do>cp ${outlogfile} ${out_work_dir}</do>
+            <do>cp ${errlogfile} ${out_work_dir}</do>
+        </step>    
+
+        <!-- patterns to parse results                                                           -->
+        <patternset name="pattern">
+            <pattern name="model_init" type="float">model-init[ ]+$jube_pat_fp</pattern>
+            <pattern name="model_run" type="float">model-run[ ]+$jube_pat_fp</pattern>
+            <pattern name="meter_total" type="float">meter-total[ ]+$jube_pat_fp</pattern>
+        </patternset>
+
+        <!-- parse result files                                                                  -->
+        <analyser name="analyse" reduce="false">
+            <use>pattern</use>
+            <analyse step="run">
+                <file>${outlogfile}</file>
+            </analyse>
+        </analyser>
+
+        <!-- compile result table                                                                -->
+        <result>
+            <use>analyse</use>
+            <table name="result" style="aligned"
+                sort="node,num_cells,ring_size,num_synapses,duration,dt,min_delay,jube_wp_iteration">
+                <column title="bench_id">jube_benchmark_id</column>
+                <column title="wp_id">jube_wp_id</column>
+                <column title="job_name">shared_job_name</column>
+                <column>nodes</column>
+                <column>num_cells</column>
+                <column>ring_size</column>
+                <column>num_synapses</column>
+                <column>duration</column>
+                <column>dt</column>
+                <column>min_delay</column>
+                <column title="iteration">jube_wp_iteration</column>
+                <column>model_init</column>
+                <column>model_run</column>
+                <column>meter_total</column>
+            </table>
+        </result>
+
+    </benchmark>
+</jube>
