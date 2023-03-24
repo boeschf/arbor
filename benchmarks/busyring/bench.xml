@@ -78,7 +78,7 @@
         <!-- Furthermore, each iteration is run as a separate job. This helps to exclude         -->
         <!-- outliers from the statistics if by chance a certain node allocation turns out to be -->
         <!-- slow for any reason.                                                                -->
-        <step name="run" iterations="5" shared="shared"
+        <step name="run" iterations="10" shared="shared"
             work_dir="@WORK_DIR@/bench_run_${jube_benchmark_id}_${jube_wp_id}">
             <use>platforms</use>                       <!-- platform name                        -->
             <use from="run.xml">jobsystem_params</use> <!-- submit commands etc                  -->
