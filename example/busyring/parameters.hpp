@@ -6,10 +6,14 @@
 #include <random>
 
 #include <sup/json_params.hpp>
+#include <arbor/load_balance.hpp>
 
 // Parameters used to generate the random cell morphologies.
 struct cell_parameters {
     cell_parameters() = default;
+
+    // Use complex cell or generic cell
+    bool complex_cell = false;
 
     //  Maximum number of levels in the cell (not including the soma)
     unsigned max_depth = 5;
@@ -22,24 +26,28 @@ struct cell_parameters {
     std::array<double,2> lengths = {200, 20};       //  Length of branch in μm.
 
     // The number of synapses per cell.
-    unsigned synapses = 2000;
+    unsigned synapses = 1;
 };
 
 struct ring_params {
     ring_params() = default;
 
     std::string name = "default";
-    unsigned num_cells = 50;
+    unsigned num_cells = 10;
     unsigned ring_size = 10;
-    double min_delay = 5;
-    double duration = 30;
+    double min_delay = 10;
+    double duration = 100;
     double dt = 0.025;
+    float event_weight = 0.025;
+    float event_freq = 1.0;
     bool record_voltage = false;
+    bool record_spikes  = true;
+    bool bind_threads = false;
     std::string odir = ".";
+    arb::partition_hint hint;
     cell_parameters cell;
 };
 
-static
 ring_params read_options(int argc, char** argv) {
     const char* usage = "Usage:  arbor-busyring [params [opath]]\n\n"
                         "Driver for the Arbor busyring benchmark\n\n"
@@ -74,12 +82,20 @@ ring_params read_options(int argc, char** argv) {
     param_from_json(params.duration, "duration", json);
     param_from_json(params.dt, "dt", json);
     param_from_json(params.min_delay, "min-delay", json);
+    param_from_json(params.event_weight, "event-weight", json);
+    param_from_json(params.event_freq, "event-freq", json);
     param_from_json(params.record_voltage, "record", json);
+    param_from_json(params.record_spikes,  "spikes", json);
+    param_from_json(params.cell.complex_cell, "complex", json);
     param_from_json(params.cell.max_depth, "depth", json);
     param_from_json(params.cell.branch_probs, "branch-probs", json);
     param_from_json(params.cell.compartments, "compartments", json);
     param_from_json(params.cell.lengths, "lengths", json);
     param_from_json(params.cell.synapses, "synapses", json);
+    param_from_json(params.bind_threads, "bind-threads", json);
+    param_from_json(params.hint.cpu_group_size, "cpu-group-size", json);
+    param_from_json(params.hint.gpu_group_size, "gpu-group-size", json);
+    param_from_json(params.hint.prefer_gpu, "prefer-gpu", json);
 
     if (!json.empty()) {
         for (auto it=json.begin(); it!=json.end(); ++it) {
