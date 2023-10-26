@@ -877,6 +877,7 @@ int Module::semantic_func_proc() {
         return errors;
     }
 
+
 #ifdef LOGGING
     std::cout << white("===================================\n");
         std::cout << cyan("        Function Inlining\n");
