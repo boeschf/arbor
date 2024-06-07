@@ -70,26 +70,6 @@ struct dry_run_context_impl {
         return gathered_vector<cell_gid_type>(std::move(gathered_gids), std::move(partition));
     }
 
-    std::vector<std::vector<cell_gid_type>>
-    gather_gj_connections(const std::vector<std::vector<cell_gid_type>> & local_connections) const {
-        auto local_size = local_connections.size();
-        std::vector<std::vector<cell_gid_type>> global_connections;
-        global_connections.reserve(local_size*num_ranks_);
-
-        for (unsigned i = 0; i < num_ranks_; i++) {
-            util::append(global_connections, local_connections);
-        }
-
-        for (unsigned i = 0; i < num_ranks_; i++) {
-            for (unsigned j = i*local_size; j < (i+1)*local_size; j++){
-                for (auto& conn_gid: global_connections[j]) {
-                    conn_gid += num_cells_per_tile_*i;
-                }
-            }
-        }
-        return global_connections;
-    }
-
     cell_label_range gather_cell_label_range(const cell_label_range& local_ranges) const {
         cell_label_range global_ranges;
         for (unsigned i = 0; i < num_ranks_; i++) {
@@ -107,6 +87,23 @@ struct dry_run_context_impl {
     template <typename T>
     std::vector<T> gather(T value, int) const {
         return std::vector<T>(num_ranks_, value);
+    }
+
+    std::vector<std::size_t> gather_all(std::size_t value) const {
+        return std::vector<std::size_t>(num_ranks_, value);
+    }
+
+    distributed_request send_recv_nonblocking(std::size_t dest_count,
+        void* dest_data,
+        int dest,
+        std::size_t source_count,
+        const void* source_data,
+        int source,
+        int tag) const {
+        throw arbor_internal_error("send_recv_nonblocking: not implemented for dry run conext.");
+
+        return distributed_request{
+            std::make_unique<distributed_request::distributed_request_interface>()};
     }
 
     int id() const { return 0; }
