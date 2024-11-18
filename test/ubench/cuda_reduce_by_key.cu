@@ -2,18 +2,15 @@
 //   u[key[i]] += v[i]
 // where key is sorted in ascending order and may contain repeated keys
 
-// Explicitly undef NDEBUG for assert below.
-#undef NDEBUG
-
 #include <iostream>
 #include <vector>
 #include <random>
 
 #include <benchmark/benchmark.h>
 
+#include <arbor/gpu/reduce_by_key.hpp>
+
 #include <memory/memory.hpp>
-#include <backends/gpu/kernels/reduce_by_key.hpp>
-#include <backends/gpu/intrinsics.hpp>
 #include <util/rangeutil.hpp>
 
 using namespace arb;
@@ -37,8 +34,9 @@ __global__
 void reduce_by_shuffle(const T* src, T* dst, const I* index, int n) {
     unsigned tid = threadIdx.x + blockIdx.x*blockDim.x;
 
+    unsigned lane_mask = gpu::ballot(0xffffffff, tid<n);
     if (tid<n) {
-        gpu::reduce_by_key(src[tid], dst, index[tid]);
+        gpu::reduce_by_key(src[tid], dst, index[tid], lane_mask);
     }
 }
 
@@ -48,7 +46,7 @@ void reduce_by_atomic(const T* src, T* dst, const I* index, int n) {
     unsigned tid = threadIdx.x + blockIdx.x*blockDim.x;
 
     if (tid<n) {
-        gpu_atomic_add(dst + index[tid], src[tid]);
+        gpu::gpu_atomic_add(dst + index[tid], src[tid]);
     }
 }
 
