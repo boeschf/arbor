@@ -11,6 +11,7 @@ set(bench_sources
     mech_vec.cpp
     task_system.cpp
     merge.cpp
+    scan.cpp
 )
 
 if(ARB_WITH_GPU)
@@ -26,7 +27,9 @@ foreach(bench_src ${bench_sources})
     string(REGEX REPLACE "\\.[^.]*$" "" bench_exe ${bench_src})
     add_executable(${bench_exe} EXCLUDE_FROM_ALL "${bench_src}")
 
-    target_link_libraries(${bench_exe} arbor arborio arbor-private-headers ext-bench)
+    target_link_libraries(${bench_exe} PRIVATE arbor-private-deps ext-bench)
+    target_link_libraries(${bench_exe} PRIVATE arbor arborio arbor-private-headers)
+
     target_compile_options(${bench_exe} PRIVATE ${ARB_CXX_FLAGS_TARGET_FULL})
     target_compile_definitions(${bench_exe} PRIVATE "-DDATADIR=\"${CMAKE_CURRENT_SOURCE_DIR}/../swc\"")
     list(APPEND bench_exe_list ${bench_exe})
